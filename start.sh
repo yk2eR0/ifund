@@ -9,8 +9,10 @@ PIP_MIRROR="https://mirrors.aliyun.com/pypi/simple/"
 
 # 1. 后端 venv + 依赖
 if [ ! -d "$BACKEND/venv" ]; then
-  echo "[start] 创建 venv ..."
-  python3 -m venv "$BACKEND/venv"
+  echo "[start] 创建 venv (Python 3.12) ..."
+  # 需 Python 3.12+（官方 MCP SDK 要求 3.10+）；优先 python3.12，回退到 python3
+  PYBIN="$(command -v python3.12 || command -v python3)"
+  "$PYBIN" -m venv "$BACKEND/venv"
 fi
 echo "[start] 安装后端依赖 ..."
 "$BACKEND/venv/bin/pip" install -q --upgrade pip
