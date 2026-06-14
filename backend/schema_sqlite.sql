@@ -169,3 +169,21 @@ CREATE TABLE IF NOT EXISTS fund_cum_return (
 );
 CREATE INDEX IF NOT EXISTS ix_fund_cum_return_fund_code ON fund_cum_return (fund_code);
 CREATE INDEX IF NOT EXISTS ix_fund_cum_return_trade_date ON fund_cum_return (trade_date);
+
+-- 股票→行业映射（静态元数据，聚类的标签基础）。
+-- 申万三级为主（legulegu），东财行业兜底（港股/未覆盖）；manual=1 表示人工修正过，采集不再覆盖。
+CREATE TABLE IF NOT EXISTS stock_industry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_code  TEXT NOT NULL UNIQUE,
+    stock_name  TEXT DEFAULT '',
+    market      TEXT DEFAULT 'A',          -- A / HK / OTHER
+    sw_l1       TEXT DEFAULT '',           -- 申万一级（回溯）
+    sw_l2       TEXT DEFAULT '',           -- 申万二级（回溯）
+    sw_l3       TEXT DEFAULT '',           -- 申万三级（主标签）
+    em_industry TEXT DEFAULT '',           -- 东财行业（兜底/港股）
+    source      TEXT DEFAULT '',           -- legulegu / eastmoney / manual
+    manual      INTEGER DEFAULT 0,         -- 1=人工修正，采集时跳过
+    updated_at  TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_stock_industry_sw3 ON stock_industry (sw_l3);
+CREATE INDEX IF NOT EXISTS ix_stock_industry_market ON stock_industry (market);

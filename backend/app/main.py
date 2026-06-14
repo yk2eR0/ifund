@@ -43,7 +43,10 @@ def create_app() -> Flask:
     from app.fund_holdings.api.router import bp as holdings_bp
     from app.fund_nav.api.router import bp as nav_bp
     from app.trade_calendar.api.router import bp as calendar_bp
-    for blueprint in (auth_bp, fund_bp, fund_detail_bp, holdings_bp, nav_bp, calendar_bp):
+    from app.stock_industry.api.router import bp as industry_bp
+    from app.cluster.api.router import bp as cluster_bp
+    for blueprint in (auth_bp, fund_bp, fund_detail_bp, holdings_bp, nav_bp,
+                      calendar_bp, industry_bp, cluster_bp):
         app.register_blueprint(blueprint)
 
     @app.get("/api/health")

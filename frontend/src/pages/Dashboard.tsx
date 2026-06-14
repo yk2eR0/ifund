@@ -2,13 +2,17 @@ import { useState } from 'react'
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button, Layout, Menu } from 'antd'
 import {
+  ApartmentOutlined,
   CalendarOutlined,
+  ClusterOutlined,
   FilterOutlined,
   FundOutlined,
   KeyOutlined,
   LogoutOutlined,
 } from '@ant-design/icons'
 import { FundPage } from './fund'
+import ClusterPage from './cluster/ClusterPage'
+import IndustryPage from './IndustryPage'
 import ScreenPage from './screen/ScreenPage'
 import TokensPage from './TokensPage'
 import TradeCalendar from './TradeCalendar'
@@ -48,6 +52,8 @@ export default function Dashboard() {
               { key: 'fund', icon: <FundOutlined />, label: '基金管理' },
               { key: 'screen', icon: <FilterOutlined />, label: '基金筛选' },
               { key: 'trade_calendar', icon: <CalendarOutlined />, label: '交易日历' },
+              { key: 'industry', icon: <ApartmentOutlined />, label: '行业映射' },
+              { key: 'cluster', icon: <ClusterOutlined />, label: '聚类分析' },
               { key: 'tokens', icon: <KeyOutlined />, label: '访问令牌' },
             ]}
           />
@@ -57,6 +63,8 @@ export default function Dashboard() {
             <Route path="/" element={<FundPage />} />
             <Route path="/screen" element={<ScreenPage />} />
             <Route path="/trade_calendar" element={<TradeCalendar />} />
+            <Route path="/industry" element={<IndustryPage />} />
+            <Route path="/cluster" element={<ClusterPage />} />
             <Route path="/tokens" element={<TokensPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

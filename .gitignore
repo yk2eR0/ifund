@@ -28,3 +28,7 @@ backend/static/
 build/
 dist/
 *.spec
+
+# Logs
+backend/logs/
+*.log
