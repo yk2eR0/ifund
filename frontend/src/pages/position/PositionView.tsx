@@ -40,8 +40,7 @@ const PositionView = forwardRef<
 
   const items = result?.items
   const meta = result?.meta
-  const portfolioNav = result?.portfolio_nav
-  const maxDrawdown = result?.max_drawdown ?? 0
+  const portfolio = result?.portfolio
   const maxWeight = items && items.length ? Math.max(...items.map((i) => i.weight)) : 0
 
   return (
@@ -76,8 +75,8 @@ const PositionView = forwardRef<
         <Alert type="info" showIcon message={result.reason ?? '无法计算'} />
       )}
 
-      {!loading && portfolioNav && portfolioNav.length > 0 && (
-        <PortfolioCharts portfolioNav={portfolioNav} maxDrawdown={maxDrawdown} />
+      {!loading && portfolio && portfolio.curve.length > 0 && (
+        <PortfolioCharts portfolio={portfolio} />
       )}
 
       {!loading && items && items.length > 0 && (

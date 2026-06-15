@@ -33,7 +33,7 @@ def run():
 
     clusters = cluster_result["clusters"]
     nav_by_code = {
-        c["funds"][0]["code"]: nav_crud.recent_series(c["funds"][0]["code"], NAV_LOOKBACK)
+        c["funds"][0]["code"]: nav_crud.recent_series_dated(c["funds"][0]["code"], NAV_LOOKBACK)
         for c in clusters if c.get("funds")
     }
     result = position_pipeline.run(clusters, nav_by_code)

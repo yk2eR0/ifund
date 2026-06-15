@@ -1,68 +1,63 @@
 """仓位编排：②聚类的簇列表 + 各簇 TOP1 净值 → 景气度/乖离/目标权重/推荐 + 组合净值走势。"""
 from __future__ import annotations
 
-import math
-
 from app.position.algo import deviation, prosperity, recommend, weights
 
 MIN_NAV_POINTS = 60      # 低于此点数视为净值不足（景气度会退化为中性）
 
 
-def _compute_portfolio_nav(series_list: list[list[float]], weights_list: list[float]) -> tuple[list[float], float]:
-  """计算组合净值和最大回撤。
+def _portfolio_curve(dated_list: list[list[tuple[str, float]]],
+                     weights_list: list[float]) -> tuple[list[dict], float]:
+    """按权重合成组合净值与回撤曲线。
 
-  Args:
-    series_list: 各基金的净值序列（升序）
-    weights_list: 各基金的目标权重
+    各代表基金净值绝对值不同，不能直接加权；先在共同起点 rebase 到 1.0，
+    再按归一化权重加权，组合净值从 1.0 起步。回撤 = 当前相对历史峰值的跌幅。
 
-  Returns:
-    (组合净值序列, 最大回撤)
-  """
-  # 过滤掉空序列
-  valid_idx = [i for i, s in enumerate(series_list) if s]
-  if not valid_idx:
-    return [], 0.0
+    Args:
+        dated_list: 每只代表基金的 ``(trade_date, 累计净值)`` 升序列表
+        weights_list: 对应目标权重（∑≈1）
 
-  # 使用最短的序列长度（保证所有基金都有数据）
-  min_len = min(len(series_list[i]) for i in valid_idx)
-  if min_len == 0:
-    return [], 0.0
+    Returns:
+        (``[{"date","nav","drawdown"}]``, 最大回撤)；drawdown 为负百分比（underwater）。
+    """
+    # 仅保留有净值且权重为正的基金，转成 date→nav 便于按日对齐
+    funds = [(dict(dated), w)
+             for dated, w in zip(dated_list, weights_list) if dated and w > 0]
+    if not funds:
+        return [], 0.0
 
-  portfolio = []
-  for i in range(min_len):
-    weighted_nav = 0.0
-    total_weight = 0.0
-    for j in valid_idx:
-      weighted_nav += series_list[j][i] * weights_list[j]
-      total_weight += weights_list[j]
-    # 按有效权重归一化
-    if total_weight > 0:
-      portfolio.append(weighted_nav / total_weight)
-    else:
-      portfolio.append(0.0)
+    # 取所有基金共有的交易日（交集），确保每天都能完整加权
+    common = set(funds[0][0])
+    for nav_map, _ in funds[1:]:
+        common &= nav_map.keys()
+    dates = sorted(common)
+    if len(dates) < 2:
+        return [], 0.0
 
-  # 计算最大回撤
-  if not portfolio:
-    return [], 0.0
+    total_w = sum(w for _, w in funds)
+    bases = [nav_map[dates[0]] for nav_map, _ in funds]  # 各基金共同起点净值
 
-  max_drawdown = 0.0
-  running_max = portfolio[0]
-  for nav in portfolio:
-    running_max = max(running_max, nav)
-    drawdown = (running_max - nav) / running_max if running_max > 0 else 0
-    max_drawdown = max(max_drawdown, drawdown)
-
-  return portfolio, max_drawdown
+    curve: list[dict] = []
+    peak = max_dd = 0.0
+    for day in dates:
+        nav = sum((nav_map[day] / base) * (w / total_w)
+                  for (nav_map, w), base in zip(funds, bases))
+        peak = max(peak, nav)
+        dd = (nav - peak) / peak if peak > 0 else 0.0   # ≤0
+        max_dd = min(max_dd, dd)
+        curve.append({"date": day, "nav": round(nav, 4), "drawdown": round(dd * 100, 2)})
+    return curve, round(-max_dd, 4)
 
 
-def run(clusters: list[dict], nav_by_code: dict[str, list[float]]) -> dict:
-    """clusters：cluster pipeline 的簇列表；nav_by_code：code→累计净值序列（升序）。
+def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -> dict:
+    """clusters：cluster pipeline 的簇列表；nav_by_code：code→``(trade_date, 累计净值)`` 升序。
 
     每簇取综合分第一的基金（``funds[0]``）作为代表，算景气度+乖离+目标权重+推荐。
     返回 ``{"items": [...], "meta": {...}}``，items 按目标权重降序。
     """
     valid = [c for c in clusters if c.get("funds")]
-    series_list = [nav_by_code.get(c["funds"][0]["code"], []) for c in valid]
+    dated_list = [nav_by_code.get(c["funds"][0]["code"], []) for c in valid]
+    series_list = [[nav for _, nav in dated] for dated in dated_list]
 
     pros = prosperity.compute(series_list)
     devs = [deviation.deviation(s) for s in series_list]
@@ -94,10 +89,9 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[float]]) -> dict:
         })
     items.sort(key=lambda x: x["weight"], reverse=True)
 
-    # 计算组合净值走势和最大回撤
-    portfolio_nav, max_drawdown = _compute_portfolio_nav(series_list, target)
+    # 按目标权重合成组合净值与回撤走势（rebase 到 1.0 后加权）
+    curve, max_drawdown = _portfolio_curve(dated_list, target)
 
     return {"items": items,
-            "portfolio_nav": portfolio_nav,
-            "max_drawdown": round(max_drawdown, 4),
+            "portfolio": {"curve": curve, "max_drawdown": max_drawdown},
             "meta": {"n_clusters": len(valid), "base_weight": base, "nav_missing": missing}}

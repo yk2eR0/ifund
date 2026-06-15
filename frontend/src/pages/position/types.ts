@@ -60,10 +60,20 @@ export interface ClusterMetaBrief {
   target: number
 }
 
+export interface PortfolioPoint {
+  date: string       // 交易日 YYYY-MM-DD
+  nav: number        // 组合净值（共同起点 rebase 到 1.0）
+  drawdown: number   // 相对历史峰值的回撤，负百分比（如 -5.2）
+}
+
+export interface Portfolio {
+  curve: PortfolioPoint[]
+  max_drawdown: number   // 最大回撤（正小数，如 0.23 表示 23%）
+}
+
 export interface PositionResult {
   items: PositionItem[] | null
-  portfolio_nav?: number[]
-  max_drawdown?: number
+  portfolio?: Portfolio
   meta?: PositionMeta
   cluster_meta?: ClusterMetaBrief
   reason?: string

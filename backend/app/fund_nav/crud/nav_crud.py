@@ -29,17 +29,25 @@ def recent_series(code: str, limit: int = 120) -> list[float]:
 
     用于列表内的迷你净值走势图：取最近一段并升序，方便前端直接绘制。
     """
+    return [nav for _, nav in recent_series_dated(code, limit)]
+
+
+def recent_series_dated(code: str, limit: int = 120) -> list[tuple[str, float]]:
+    """最近 limit 个交易日的 ``(trade_date, 累计净值)`` 列表（缺失回退单位净值），按时间升序。
+
+    组合净值/回撤走势需要按日期对齐多只基金，故保留交易日。
+    """
     rows = database.select("fund_nav", [
         ("fund_code", f"eq.{code}"),
         ("order", "trade_date.desc"),
         ("limit", limit),
     ])
     rows.reverse()  # desc 取最近 N 条后再反转为时间升序
-    series: list[float] = []
+    series: list[tuple[str, float]] = []
     for row in rows:
         value = row.get("acc_nav")
         if value is None:
             value = row.get("nav")
         if value is not None:
-            series.append(value)
+            series.append((row["trade_date"], value))
     return series
