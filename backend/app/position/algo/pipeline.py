@@ -144,14 +144,15 @@ def _lookthrough(selected: list[dict], weights_list: list[float],
     overlap = sum(1 for s in stocks if s["fund_count"] >= 2)
     visible = round(sum(s["exposure"] for s in stocks), 2)
 
-    # 行业聚合：组合穿透后各行业的总仓位
+    # 行业聚合：组合穿透后各行业的总仓位 + 该行业下的股票（按穿透仓位降序）
     ind_agg: dict[str, dict] = {}
-    for s in stocks:
+    for s in stocks:   # stocks 已按 exposure 降序，行业内 stocks 也保持降序
         slot = ind_agg.setdefault(s["industry"], {
-            "industry": s["industry"], "exposure": 0.0, "stock_count": 0,
+            "industry": s["industry"], "exposure": 0.0, "stock_count": 0, "stocks": [],
         })
         slot["exposure"] += s["exposure"]
         slot["stock_count"] += 1
+        slot["stocks"].append({"name": s["name"], "exposure": s["exposure"]})
     industries = sorted(ind_agg.values(), key=lambda x: x["exposure"], reverse=True)
     for x in industries:
         x["exposure"] = round(x["exposure"], 2)

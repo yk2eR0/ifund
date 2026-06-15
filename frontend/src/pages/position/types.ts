@@ -58,10 +58,16 @@ export interface LookthroughStock {
 }
 
 // 行业聚合：组合穿透后各行业的总仓位
+export interface LookthroughIndustryStock {
+  name: string
+  exposure: number     // 该股票在组合中的穿透仓位（%）
+}
+
 export interface LookthroughIndustry {
   industry: string
   exposure: number     // 该行业累计穿透仓位（%）
   stock_count: number  // 该行业下的不同股票数
+  stocks: LookthroughIndustryStock[]  // 该行业下的股票（按穿透仓位降序）
 }
 
 export interface Lookthrough {

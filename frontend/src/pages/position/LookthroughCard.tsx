@@ -16,7 +16,7 @@ interface Props {
 // 勾选股票/行业即联动下方仅显示持有它们的代表基金（并集）。
 export default function LookthroughCard({ data, selStocks, selInds, onSelStocks, onSelInds }: Props) {
   const { token } = theme.useToken()
-  const [mode, setMode] = useState<'stock' | 'industry'>('stock')
+  const [mode, setMode] = useState<'stock' | 'industry'>('industry')
 
   const fundList = (s: LookthroughStock) => (
     <div style={{ maxWidth: 240 }}>
@@ -81,11 +81,35 @@ export default function LookthroughCard({ data, selStocks, selInds, onSelStocks,
     },
   ]
 
+  // 行业下的股票明细：tooltip 里逐只列「名称 + 穿透仓位」
+  const indStockList = (r: LookthroughIndustry) => (
+    <div style={{ maxWidth: 260 }}>
+      {r.stocks.map((s, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, lineHeight: '18px' }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+          <span style={{ flexShrink: 0 }}>{s.exposure.toFixed(2)}%</span>
+        </div>
+      ))}
+    </div>
+  )
+
   const maxInd = data.industries[0]?.exposure ?? 0
   const total = data.visible_position || 1
   const industryColumns: ColumnsType<LookthroughIndustry> = [
-    { title: '行业', dataIndex: 'industry', render: (v: string) => v || '其他' },
-    { title: '含股票', dataIndex: 'stock_count', align: 'center', width: 90, render: (v: number) => `${v} 只` },
+    { title: '行业', dataIndex: 'industry', width: 150, ellipsis: true, render: (v: string) => v || '其他' },
+    {
+      title: '含股票',
+      dataIndex: 'stocks',
+      ellipsis: true,
+      render: (_: unknown, r) => (
+        <Tooltip title={indStockList(r)} placement="topLeft">
+          <span style={{ color: token.colorTextSecondary, fontSize: 12 }}>
+            {r.stocks.map((s) => s.name).join('、') || '—'}
+          </span>
+        </Tooltip>
+      ),
+    },
+    { title: '股票数', dataIndex: 'stock_count', align: 'center', width: 70, render: (v: number) => `${v} 只` },
     {
       title: '组合穿透仓位',
       dataIndex: 'exposure',
@@ -99,7 +123,7 @@ export default function LookthroughCard({ data, selStocks, selInds, onSelStocks,
       title: '占可见仓位',
       dataIndex: 'exposure',
       align: 'right',
-      width: 110,
+      width: 100,
       render: (v: number) => <span style={{ color: token.colorTextSecondary }}>{((v / total) * 100).toFixed(1)}%</span>,
     },
   ]

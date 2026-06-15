@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from 'react'
-import { Alert, Button, Card, Empty, Segmented, Space, Spin, Tag, Tooltip, message } from 'antd'
-import { ClockCircleOutlined, FundOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Empty, Segmented, Space, Spin, Table, Tag, Tooltip, message } from 'antd'
+import { ClockCircleOutlined, CopyOutlined, FundOutlined } from '@ant-design/icons'
 import request from '../../api/request'
 import PositionRow from './PositionRow'
 import PortfolioCharts from './PortfolioCharts'
@@ -17,6 +17,8 @@ const PositionView = forwardRef<
   const [result, setResult] = useState<PositionResult | null>(null)
   // 均衡强度：单一行业穿透占比上限 cap，越小越分散（牺牲更多景气权重），越大越接近纯景气
   const [cap, setCap] = useState(0.18)
+  // 仓位建议展示模式：detail=完整（指标/走势/持仓），simple=简洁（名称/编码/比例，便于复制）
+  const [viewMode, setViewMode] = useState<'detail' | 'simple'>('detail')
   // 穿透联动：勾选的股票/行业，用于过滤+高亮下方代表基金
   const [selStocks, setSelStocks] = useState<string[]>([])
   const [selInds, setSelInds] = useState<string[]>([])
@@ -76,6 +78,17 @@ const PositionView = forwardRef<
     : hasSel
       ? items.filter((it) => (it.holdings ?? []).some((h) => stockSet.has(h.code) || indSet.has(h.industry)))
       : items
+
+  // 简洁模式：把「名称\t编码\t建议仓位」整体复制，方便粘贴到 Excel
+  const copyAll = () => {
+    const text = shownItems
+      .map((it) => `${it.fund.name}\t${it.fund.code}\t${(it.weight * 100).toFixed(1)}%`)
+      .join('\n')
+    navigator.clipboard.writeText(text).then(
+      () => message.success(`已复制 ${shownItems.length} 行`),
+      () => message.error('复制失败'),
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -158,9 +171,53 @@ const PositionView = forwardRef<
       )}
 
       {!loading && items && items.length > 0 && (
-        <Card title="各赛道仓位建议" size="small">
+        <Card
+          title="各赛道仓位建议"
+          size="small"
+          extra={
+            <Space>
+              {viewMode === 'simple' && shownItems.length > 0 && (
+                <Button size="small" icon={<CopyOutlined />} onClick={copyAll}>
+                  复制全部
+                </Button>
+              )}
+              <Segmented
+                size="small"
+                value={viewMode}
+                onChange={(v) => setViewMode(v as 'detail' | 'simple')}
+                options={[
+                  { label: '简洁', value: 'simple' },
+                  { label: '详细', value: 'detail' },
+                ]}
+              />
+            </Space>
+          }
+        >
           {shownItems.length === 0 ? (
             <Empty description="所选股票/行业未命中任何代表基金" />
+          ) : viewMode === 'simple' ? (
+            <Table
+              size="small"
+              rowKey="cluster_id"
+              dataSource={shownItems}
+              pagination={false}
+              columns={[
+                { title: '基金名称', dataIndex: ['fund', 'name'] },
+                {
+                  title: '基金编码',
+                  dataIndex: ['fund', 'code'],
+                  width: 120,
+                  render: (v: string) => <span style={{ fontFamily: 'monospace' }}>{v}</span>,
+                },
+                {
+                  title: '建议仓位',
+                  dataIndex: 'weight',
+                  width: 110,
+                  align: 'right',
+                  render: (w: number) => <b>{(w * 100).toFixed(1)}%</b>,
+                },
+              ]}
+            />
           ) : (
             shownItems.map((it) => (
               <PositionRow
