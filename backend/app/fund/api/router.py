@@ -97,8 +97,10 @@ def _parse_order_by(order_by):
 
 
 def _attach_holdings(items: list) -> None:
+    # 同时附加股票与债券前十大，前端按 holding_type 分两列展示
     for item in items:
-        item["holdings"] = holdings_crud.top_holdings(item["code"])
+        item["holdings"] = (holdings_crud.top_holdings(item["code"], "stock")
+                            + holdings_crud.top_holdings(item["code"], "bond"))
 
 
 def _attach_nav(items: list) -> None:

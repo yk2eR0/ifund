@@ -13,14 +13,18 @@ export function ratio(v: number | null | undefined): string {
   return v === null || v === undefined ? '' : `${Number(v).toFixed(2)}%`
 }
 
-/** 前十大持仓列：默认显示第一大，悬停 Tooltip 展示完整前十。 */
-export function renderHoldings(holdings: HoldingItem[] | undefined) {
-  const list = (holdings ?? []).filter((h) => h.holding_type === 'stock')
+/** 前十大持仓列：按类型（股票/债券）过滤，默认显示第一大，悬停 Tooltip 展示完整前十。 */
+export function renderHoldings(
+  holdings: HoldingItem[] | undefined,
+  type: 'stock' | 'bond' = 'stock',
+) {
+  const label = type === 'stock' ? '重仓股' : '重仓债'
+  const list = (holdings ?? []).filter((h) => h.holding_type === type)
   if (!list.length) return <span className="text-gray-500">-</span>
   const top = list[0]
   const content = (
     <div style={{ maxWidth: 240 }}>
-      <div className="mb-1 text-xs text-gray-400">前十大重仓股 · {top.quarter}</div>
+      <div className="mb-1 text-xs text-gray-400">前十大{label} · {top.quarter}</div>
       {list.map((h, i) => (
         <div key={`${h.asset_code}-${i}`} className="flex justify-between gap-4 text-xs leading-5">
           <span className="truncate">
@@ -71,11 +75,20 @@ export function buildFundColumns(opts: ColumnOptions = {}): ColumnsType<FundItem
     { title: '回撤3年', dataIndex: 'max_drawdown_3y', width: 100, sorter: sorter('max_drawdown_3y'), render: num },
     { title: '股票仓位', dataIndex: 'position_stock', width: 100, sorter: sorter('position_stock'), render: num },
     {
-      title: '前十大持仓',
+      title: '前十大股票持仓',
+      key: 'holdings_stock',
       dataIndex: 'holdings',
       width: 160,
       ellipsis: true,
-      render: (holdings: HoldingItem[] | undefined) => renderHoldings(holdings),
+      render: (holdings: HoldingItem[] | undefined) => renderHoldings(holdings, 'stock'),
+    },
+    {
+      title: '前十大债券持仓',
+      key: 'holdings_bond',
+      dataIndex: 'holdings',
+      width: 160,
+      ellipsis: true,
+      render: (holdings: HoldingItem[] | undefined) => renderHoldings(holdings, 'bond'),
     },
   ]
   if (showNav) {
