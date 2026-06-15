@@ -18,24 +18,33 @@ def _compute_portfolio_nav(series_list: list[list[float]], weights_list: list[fl
   Returns:
     (组合净值序列, 最大回撤)
   """
-  if not series_list or all(not s for s in series_list):
+  # 过滤掉空序列
+  valid_idx = [i for i, s in enumerate(series_list) if s]
+  if not valid_idx:
     return [], 0.0
 
-  # 找最长序列，用最新 nav 点数对齐
-  max_len = max(len(s) for s in series_list) if series_list else 0
-  if max_len == 0:
+  # 使用最短的序列长度（保证所有基金都有数据）
+  min_len = min(len(series_list[i]) for i in valid_idx)
+  if min_len == 0:
     return [], 0.0
 
   portfolio = []
-  for i in range(max_len):
+  for i in range(min_len):
     weighted_nav = 0.0
-    for j, series in enumerate(series_list):
-      # 对齐：用最新点后向填充
-      idx = max(0, i - (max_len - len(series)))
-      weighted_nav += series[idx] * weights_list[j]
-    portfolio.append(weighted_nav)
+    total_weight = 0.0
+    for j in valid_idx:
+      weighted_nav += series_list[j][i] * weights_list[j]
+      total_weight += weights_list[j]
+    # 按有效权重归一化
+    if total_weight > 0:
+      portfolio.append(weighted_nav / total_weight)
+    else:
+      portfolio.append(0.0)
 
   # 计算最大回撤
+  if not portfolio:
+    return [], 0.0
+
   max_drawdown = 0.0
   running_max = portfolio[0]
   for nav in portfolio:
