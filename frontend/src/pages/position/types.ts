@@ -69,6 +69,9 @@ export interface PortfolioPoint {
 export interface Portfolio {
   curve: PortfolioPoint[]
   max_drawdown: number   // 最大回撤（正小数，如 0.23 表示 23%）
+  annual_return: number  // 年化收益（小数）
+  annual_vol: number     // 年化波动（小数）
+  sharpe: number         // 夏普比率（rf=0）
 }
 
 export interface PositionResult {

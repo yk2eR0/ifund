@@ -1,9 +1,12 @@
 """仓位编排：②聚类的簇列表 + 各簇 TOP1 净值 → 景气度/乖离/目标权重/推荐 + 组合净值走势。"""
 from __future__ import annotations
 
+from datetime import date
+
 from app.position.algo import deviation, prosperity, recommend, weights
 
 MIN_NAV_POINTS = 60      # 低于此点数视为净值不足（景气度会退化为中性）
+RISK_FREE_ANNUAL = 0.0   # 夏普比率的无风险利率（简化为 0，即「收益/波动」口径）
 
 
 def _portfolio_curve(dated_list: list[list[tuple[str, float]]],
@@ -49,6 +52,31 @@ def _portfolio_curve(dated_list: list[list[tuple[str, float]]],
     return curve, round(-max_dd, 4)
 
 
+def _portfolio_stats(curve: list[dict]) -> dict:
+    """从组合净值曲线算年化收益/年化波动/夏普比率。
+
+    用逐点简单收益率，按实际日期跨度推断「每年观测数」做年化（兼容日频/周频）。
+    夏普 = 年化超额收益 / 年化波动，无风险利率见 ``RISK_FREE_ANNUAL``。
+    """
+    if len(curve) < 2:
+        return {"annual_return": 0.0, "annual_vol": 0.0, "sharpe": 0.0}
+
+    navs = [p["nav"] for p in curve]
+    rets = [navs[i] / navs[i - 1] - 1 for i in range(1, len(navs))]
+    mean = sum(rets) / len(rets)
+    var = sum((r - mean) ** 2 for r in rets) / (len(rets) - 1) if len(rets) > 1 else 0.0
+    std = var ** 0.5
+
+    span_days = (date.fromisoformat(curve[-1]["date"]) - date.fromisoformat(curve[0]["date"])).days or 1
+    periods_per_year = len(rets) * 365.25 / span_days
+    annual_return = (navs[-1] / navs[0]) ** (365.25 / span_days) - 1
+    annual_vol = std * periods_per_year ** 0.5
+    sharpe = (annual_return - RISK_FREE_ANNUAL) / annual_vol if annual_vol > 0 else 0.0
+    return {"annual_return": round(annual_return, 4),
+            "annual_vol": round(annual_vol, 4),
+            "sharpe": round(sharpe, 2)}
+
+
 def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -> dict:
     """clusters：cluster pipeline 的簇列表；nav_by_code：code→``(trade_date, 累计净值)`` 升序。
 
@@ -89,9 +117,10 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -
         })
     items.sort(key=lambda x: x["weight"], reverse=True)
 
-    # 按目标权重合成组合净值与回撤走势（rebase 到 1.0 后加权）
+    # 按目标权重合成组合净值与回撤走势（rebase 到 1.0 后加权），并算年化/夏普
     curve, max_drawdown = _portfolio_curve(dated_list, target)
+    stats = _portfolio_stats(curve)
 
     return {"items": items,
-            "portfolio": {"curve": curve, "max_drawdown": max_drawdown},
+            "portfolio": {"curve": curve, "max_drawdown": max_drawdown, **stats},
             "meta": {"n_clusters": len(valid), "base_weight": base, "nav_missing": missing}}
