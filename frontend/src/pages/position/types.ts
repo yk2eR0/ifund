@@ -33,6 +33,14 @@ export interface NavCurvePoint {
   nav: number  // 相对窗口起点 rebase 到 1.0 的累计净值
 }
 
+// 代表基金的前十大重仓股（含行业、占净值比例）
+export interface PositionHolding {
+  code: string
+  name: string
+  ratio: number      // 占净值比例（%）
+  industry: string   // 申万行业标签
+}
+
 // 底层持仓穿透：把各簇代表基金前十大股票按目标权重累加
 export interface LookthroughFundRef {
   name: string
@@ -75,6 +83,7 @@ export interface PositionItem {
   prosperity: ProsperityBreakdown
   deviation: DeviationInfo
   nav_curve: NavCurvePoint[]
+  holdings: PositionHolding[]
   base_weight: number
   weight: number
   recommendation: Recommendation

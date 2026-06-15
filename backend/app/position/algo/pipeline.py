@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date
 
 from app.position.algo import deviation, prosperity, recommend, weights
+from app.stock_industry.crud import industry_crud
 
 MIN_NAV_POINTS = 60      # 低于此点数视为净值不足（景气度会退化为中性）
 RISK_FREE_ANNUAL = 0.0   # 夏普比率的无风险利率（简化为 0，即「收益/波动」口径）
@@ -137,6 +138,7 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
     """
     holdings_by_code = holdings_by_code or {}
     detail_by_code = detail_by_code or {}
+    ind_idx = industry_crud.industry_index()   # 股票代码 → 行业映射，给前十大持仓标行业
     valid = [c for c in clusters if c.get("funds")]
     dated_list = [nav_by_code.get(c["funds"][0]["code"], []) for c in valid]
     series_list = [[nav for _, nav in dated] for dated in dated_list]
@@ -153,6 +155,12 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
         points = len(series_list[i])
         if points < MIN_NAV_POINTS:
             missing.append(fund["code"])
+        holdings = [{
+            "code": (h.get("asset_code") or "").strip(),
+            "name": h.get("asset_name") or h.get("asset_code") or "",
+            "ratio": round(h.get("hold_ratio") or 0.0, 2),
+            "industry": industry_crud.label_of((h.get("asset_code") or "").strip(), ind_idx),
+        } for h in holdings_by_code.get(fund["code"], [])]
         items.append({
             "cluster_id": cluster["cluster_id"],
             "cluster_name": cluster["name"],
@@ -170,6 +178,7 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
             },
             "nav_points": points,
             "nav_curve": _rebase_curve(dated_list[i]),
+            "holdings": holdings,
             "prosperity": pros[i],
             "deviation": devs[i],
             "base_weight": base,

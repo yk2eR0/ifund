@@ -10,7 +10,7 @@ function fmt(v: number | null | undefined, suffix = ''): string {
   return v === null || v === undefined ? '-' : `${Number(v).toFixed(2)}${suffix}`
 }
 
-// 单簇仓位建议行：左=目标权重 | 中=簇/基金/指标/走势图 | 右=景气四因子（收缩）+乖离+理由
+// 单簇仓位建议行：左=目标权重 | 中=簇/基金/指标/走势图 + 前十大重仓股 | 右=景气四因子（收缩）
 export default function PositionRow({ item, maxWeight }: { item: PositionItem; maxWeight: number }) {
   const { fund, prosperity: pros, deviation: dev, recommendation: rec } = item
   const pct = (item.weight * 100).toFixed(1)
@@ -18,6 +18,7 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
   const rel = item.weight - item.base_weight
   const industries = item.top_industries.map((i) => i.label).join(' / ') || item.cluster_name
   const noNav = item.nav_points < 60
+  const holdings = item.holdings ?? []
 
   const metric = (label: string, value: string, color?: string) => (
     <span style={{ fontSize: 12, color: '#8c8c8c' }}>
@@ -59,8 +60,8 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
         </div>
       </div>
 
-      {/* 中：簇 + 代表基金 + 指标 + 迷你走势图 */}
-      <div style={{ flex: 1, minWidth: 320 }}>
+      {/* 中：簇 + 代表基金 + 指标 + 走势图 + 前十大重仓股 */}
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div>
           <Tag color="geekblue">簇 {item.cluster_id}</Tag>
           <span style={{ fontWeight: 600 }}>{industries}</span>
@@ -71,16 +72,63 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
             {fund.code} · 簇内综合分第一 · 共 {item.fund_count} 只
           </span>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', marginTop: 4 }}>
-          {metric('Sharpe3y', fmt(fund.sharpe_3y), fund.sharpe_3y && fund.sharpe_3y >= 1 ? '#f5222d' : undefined)}
-          {metric('Sharpe1y', fmt(fund.sharpe_1y))}
-          {metric('回撤3y', fmt(fund.max_drawdown_3y, '%'), '#fa8c16')}
-          {metric('今年', fmt(fund.return_ytd, '%'), (fund.return_ytd ?? 0) >= 0 ? '#f5222d' : '#52c41a')}
-          {metric('股票仓位', fmt(fund.position_stock, '%'))}
-          {fund.scale != null && metric('规模', `${fund.scale.toFixed(1)}亿`)}
-        </div>
-        <div style={{ marginTop: 6, maxWidth: 460 }}>
-          <MiniNavChart data={item.nav_curve} />
+
+        <div style={{ display: 'flex', gap: 24, marginTop: 6, alignItems: 'flex-start' }}>
+          {/* 左块：指标 + 迷你走势图 */}
+          <div style={{ width: 430, flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px' }}>
+              {metric('Sharpe3y', fmt(fund.sharpe_3y), fund.sharpe_3y && fund.sharpe_3y >= 1 ? '#f5222d' : undefined)}
+              {metric('Sharpe1y', fmt(fund.sharpe_1y))}
+              {metric('回撤3y', fmt(fund.max_drawdown_3y, '%'), '#fa8c16')}
+              {metric('今年', fmt(fund.return_ytd, '%'), (fund.return_ytd ?? 0) >= 0 ? '#f5222d' : '#52c41a')}
+              {metric('股票仓位', fmt(fund.position_stock, '%'))}
+              {fund.scale != null && metric('规模', `${fund.scale.toFixed(1)}亿`)}
+            </div>
+            <div style={{ marginTop: 6 }}>
+              <MiniNavChart data={item.nav_curve} />
+            </div>
+          </div>
+
+          {/* 右块：前十大重仓股（名称 · 行业 · 占净值比例） */}
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 12, color: '#8c8c8c', marginBottom: 4 }}>
+              前十大重仓股{holdings.length ? `（合计 ${holdings.reduce((a, h) => a + h.ratio, 0).toFixed(1)}%）` : ''}
+            </div>
+            {holdings.length === 0 ? (
+              <span style={{ fontSize: 12, color: '#8c8c8c' }}>暂无持仓数据</span>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 20, rowGap: 1 }}>
+                {holdings.map((h, i) => (
+                  <div
+                    key={`${h.code}-${i}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, lineHeight: '20px' }}
+                  >
+                    <span style={{ color: '#8c8c8c', width: 14, textAlign: 'right', flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {h.name}
+                    </span>
+                    <Tooltip title={h.industry}>
+                      <span
+                        style={{
+                          color: '#8c8c8c',
+                          flexShrink: 0,
+                          maxWidth: 84,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {h.industry}
+                      </span>
+                    </Tooltip>
+                    <span style={{ flexShrink: 0, width: 46, textAlign: 'right', fontWeight: 600 }}>
+                      {h.ratio.toFixed(2)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
