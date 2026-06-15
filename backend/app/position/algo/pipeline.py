@@ -1,13 +1,30 @@
-"""仓位编排：②聚类的簇列表 + 各簇 TOP1 净值 → 景气度/乖离/目标权重/推荐 + 组合净值走势。"""
+"""仓位编排：②聚类的簇列表 + 各簇 TOP5 候选净值/持仓 → 选基金 + 行业感知权重 + 推荐 + 组合净值走势。
+
+每簇不再硬取 TOP1，而是从综合分前 TOPK 的候选里选 1 只（``optimize.select_funds``），
+在保证质量的前提下尽量降低底层行业集中度；再对选中基金做行业感知的权重再分配
+（``optimize.rebalance_weights``，单一行业穿透占比上限 cap），缓解多簇同涨同跌。
+"""
 from __future__ import annotations
 
 from datetime import date
 
-from app.position.algo import deviation, prosperity, recommend, weights
+from app.position.algo import deviation, optimize, prosperity, recommend, weights
 from app.stock_industry.crud import industry_crud
 
 MIN_NAV_POINTS = 60      # 低于此点数视为净值不足（景气度会退化为中性）
 RISK_FREE_ANNUAL = 0.0   # 夏普比率的无风险利率（简化为 0，即「收益/波动」口径）
+
+
+def _industry_vector(holdings: list[dict], ind_idx: dict) -> dict[str, float]:
+    """前十大股票按申万行业聚合占净值比例，得到该基金的行业向量（行业→合计%）。"""
+    vec: dict[str, float] = {}
+    for h in holdings:
+        scode = (h.get("asset_code") or "").strip()
+        if not scode:
+            continue
+        lab = industry_crud.label_of(scode, ind_idx)
+        vec[lab] = vec.get(lab, 0.0) + (h.get("hold_ratio") or 0.0)
+    return vec
 
 
 def _portfolio_curve(dated_list: list[list[tuple[str, float]]],
@@ -88,23 +105,25 @@ def _rebase_curve(dated: list[tuple[str, float]]) -> list[dict]:
     return [{"date": d, "nav": round(v / base, 4)} for d, v in dated]
 
 
-def _lookthrough(valid: list[dict], weights_list: list[float],
+def _lookthrough(selected: list[dict], weights_list: list[float],
                  holdings_by_code: dict[str, list[dict]], ind_idx: dict) -> dict:
-    """把各簇代表基金的前十大股票按目标权重穿透累加，看底层实际持有哪些股票/行业。
+    """把各簇选中基金的前十大股票按目标权重穿透累加，看底层实际持有哪些股票/行业。
 
     组合对某股票的暴露% = ∑(基金目标权重 × 该基金中此股占净值比例)。
     重叠（被 ≥2 只基金持有）越多，说明底层越集中、代表基金相关性越高。
     再把股票暴露按行业聚合，看组合整体行业占比。仅基于可见的前十大持仓，非完整持仓。
+
+    selected：各簇选中基金 ``{"code","name"}`` 列表，与 weights_list 一一对应。
     """
     agg: dict[str, dict] = {}
     covered = 0
-    for cluster, w in zip(valid, weights_list):
-        code = cluster["funds"][0]["code"]
+    for fund, w in zip(selected, weights_list):
+        code = fund["code"]
         holdings = holdings_by_code.get(code, [])
         if not holdings or w <= 0:
             continue
         covered += 1
-        fund_name = cluster["funds"][0]["name"]
+        fund_name = fund["name"]
         for h in holdings:
             scode = (h.get("asset_code") or "").strip()
             if not scode:
@@ -144,28 +163,50 @@ def _lookthrough(valid: list[dict], weights_list: list[float],
 
 def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
         holdings_by_code: dict[str, list[dict]] | None = None,
-        detail_by_code: dict[str, dict] | None = None) -> dict:
-    """clusters：cluster pipeline 的簇列表；nav_by_code：code→``(trade_date, 累计净值)`` 升序。
+        detail_by_code: dict[str, dict] | None = None,
+        cap: float = optimize.DEFAULT_CAP) -> dict:
+    """clusters：cluster pipeline 的簇列表；nav_by_code/holdings_by_code 须覆盖各簇 TOP{TOPK} 候选。
 
-    holdings_by_code：code→前十大股票持仓（穿透分析用）；detail_by_code：code→fund_details 行（补回撤/夏普）。
-    每簇取综合分第一的基金（``funds[0]``）作为代表，算景气度+乖离+目标权重+推荐。
-    返回 ``{"items": [...], "portfolio": {...}, "lookthrough": {...}, "meta": {...}}``，items 按目标权重降序。
+    nav_by_code：code→``(trade_date, 累计净值)`` 升序；holdings_by_code：code→前十大股票持仓；
+    detail_by_code：code→fund_details 行（补回撤/夏普）。cap：单一行业穿透占比上限（均衡强度）。
+
+    流程：每簇从综合分前 ``optimize.TOPK`` 候选里选 1 只（行业去重），对选中基金算景气度+乖离
+    得基准权重，再做行业感知再分配（上限 cap）。返回 ``{"items","portfolio","lookthrough","meta"}``，
+    items 按目标权重降序；每项 fund 含 ``cluster_rank``（1=TOP1）标注是否替代了 TOP1。
     """
     holdings_by_code = holdings_by_code or {}
     detail_by_code = detail_by_code or {}
     ind_idx = industry_crud.industry_index()   # 股票代码 → 行业映射，给前十大持仓标行业
     valid = [c for c in clusters if c.get("funds")]
-    dated_list = [nav_by_code.get(c["funds"][0]["code"], []) for c in valid]
+    if not valid:
+        return {"items": [], "portfolio": {"curve": [], "max_drawdown": 0.0},
+                "lookthrough": {"funds_covered": 0, "total_stocks": 0, "overlap_stocks": 0,
+                                "visible_position": 0.0, "stocks": [], "industries": []},
+                "meta": {"n_clusters": 0, "base_weight": 0.0, "nav_missing": [], "cap": cap}}
+
+    # 每簇构造 TOP{TOPK} 候选（含行业向量），交给 optimize 选基金
+    cands = [[{"code": f["code"], "name": f["name"], "score": f["score"],
+               "vec": _industry_vector(holdings_by_code.get(f["code"], []), ind_idx)}
+              for f in c["funds"][:optimize.TOPK]]
+             for c in valid]
+    choice = optimize.select_funds(cands, cap)
+    selected = [valid[i]["funds"][choice[i]] for i in range(len(valid))]
+
+    dated_list = [nav_by_code.get(f["code"], []) for f in selected]
     series_list = [[nav for _, nav in dated] for dated in dated_list]
 
     pros = prosperity.compute(series_list)
     devs = [deviation.deviation(s) for s in series_list]
-    target = weights.target_weights([p["total"] for p in pros], devs)
-    base = round(1.0 / len(valid), 4) if valid else 0.0
+    base_weights = weights.target_weights([p["total"] for p in pros], devs)
+    # 行业感知再分配：把权重从高集中行业的簇挪向其它簇，使最大单一行业占比 ≤ cap
+    vecs = [cands[i][choice[i]]["vec"] for i in range(len(valid))]
+    quality = [p["total"] / 100.0 for p in pros]
+    target = optimize.rebalance_weights(base_weights, vecs, quality, cap)
+    base = round(1.0 / len(valid), 4)
 
     items, missing = [], []
     for i, cluster in enumerate(valid):
-        fund = cluster["funds"][0]
+        fund = selected[i]
         detail = detail_by_code.get(fund["code"], {})
         points = len(series_list[i])
         if points < MIN_NAV_POINTS:
@@ -184,6 +225,7 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
             "fund": {
                 "code": fund["code"], "name": fund["name"], "score": fund["score"],
                 "sharpe_3y": fund["sharpe_3y"], "scale": fund["scale"],
+                "cluster_rank": choice[i] + 1,   # 1=TOP1；>1 表示为降相关性选了次优基金
                 "sharpe_1y": detail.get("sharpe_1y"),
                 "max_drawdown_3y": detail.get("max_drawdown_3y"),
                 "max_drawdown_1y": detail.get("max_drawdown_1y"),
@@ -206,9 +248,11 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
     # 按目标权重合成组合净值与回撤走势（rebase 到 1.0 后加权），并算年化/夏普
     curve, max_drawdown = _portfolio_curve(dated_list, target)
     stats = _portfolio_stats(curve)
-    lookthrough = _lookthrough(valid, target, holdings_by_code, ind_idx)
+    lookthrough = _lookthrough(selected, target, holdings_by_code, ind_idx)
+    swapped = sum(1 for r in choice if r != 0)
 
     return {"items": items,
             "portfolio": {"curve": curve, "max_drawdown": max_drawdown, **stats},
             "lookthrough": lookthrough,
-            "meta": {"n_clusters": len(valid), "base_weight": base, "nav_missing": missing}}
+            "meta": {"n_clusters": len(valid), "base_weight": base,
+                     "nav_missing": missing, "cap": cap, "funds_swapped": swapped}}

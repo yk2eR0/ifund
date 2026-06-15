@@ -1,7 +1,7 @@
-"""簇级仓位权重蓝图：基于②聚类结果，对每簇 TOP1 基金做③仓位建议。
+"""簇级仓位权重蓝图：基于②聚类结果，对每簇做③仓位建议（TOP5 候选交叉选基金 + 行业感知权重）。
 
-链路：预设镜像 → cluster.pipeline 聚类 → 取每簇 TOP1 基金净值 →
-景气度(净值四因子) + 乖离度 → 目标权重(∑=100%) + 持仓推荐。
+链路：预设镜像 → cluster.pipeline 聚类 → 取每簇 TOP5 候选净值/持仓 →
+组合优化选基金（行业去重）→ 景气度(净值四因子) + 乖离度 → 行业感知目标权重(∑=100%) + 持仓推荐。
 """
 from __future__ import annotations
 
@@ -34,11 +34,14 @@ def run():
         return jsonify({"items": None, "reason": "有效基金不足（需 ≥3 只含股票持仓的基金）"})
 
     clusters = cluster_result["clusters"]
-    top_codes = [c["funds"][0]["code"] for c in clusters if c.get("funds")]
-    nav_by_code = {code: nav_crud.recent_series_dated(code, NAV_LOOKBACK) for code in top_codes}
-    holdings_by_code = {code: holdings_crud.top_holdings(code, "stock") for code in top_codes}
+    # 每簇取综合分前 TOPK 候选（供组合优化交叉选基金），需覆盖它们全部的净值/持仓/明细
+    cand_codes = sorted({f["code"]
+                         for c in clusters if c.get("funds")
+                         for f in c["funds"][:position_pipeline.optimize.TOPK]})
+    nav_by_code = {code: nav_crud.recent_series_dated(code, NAV_LOOKBACK) for code in cand_codes}
+    holdings_by_code = {code: holdings_crud.top_holdings(code, "stock") for code in cand_codes}
     detail_by_code = {}
-    for code in top_codes:
+    for code in cand_codes:
         detail = database.select_one("fund_details", {"fund_code": f"eq.{code}"})
         if detail:
             detail_by_code[code] = detail

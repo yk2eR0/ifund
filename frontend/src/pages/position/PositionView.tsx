@@ -73,7 +73,8 @@ const PositionView = forwardRef<
         </Button>
         {meta && (
           <span style={{ color: '#888', fontSize: 12 }}>
-            {meta.n_clusters} 个赛道 · 等权基准 {(meta.base_weight * 100).toFixed(1)}%
+            {meta.n_clusters} 个赛道 · 等权基准 {(meta.base_weight * 100).toFixed(1)}% · 单行业上限 {(meta.cap * 100).toFixed(0)}%
+            {meta.funds_swapped ? ` · ${meta.funds_swapped} 簇为降相关选了次优基金` : ''}
             {meta.nav_missing.length ? ` · ${meta.nav_missing.length} 只缺净值按中性估计` : ''}
           </span>
         )}
@@ -83,7 +84,7 @@ const PositionView = forwardRef<
         <Alert
           type="info"
           showIcon
-          message="每簇只配综合分第一的「代表基金」；权重 = 等权基准 × 景气因子 × 乖离因子，截断到 [3%, 25%] 后归一到 100%。景气度由代表基金净值四因子估计（top10 持仓口径，单基金代理），仅供参考、非投资建议。"
+          message="每簇从综合分前 5 候选里选 1 只「代表基金」：在保证质量前提下尽量降低底层行业相关性（必要时用次优基金替代 TOP1）。权重 = 景气因子 × 乖离因子的基准，再做行业感知再分配（单一行业穿透占比 ≤ 上限），截断到 [3%, 25%] 后归一到 100%。景气度由代表基金净值四因子估计（top10 持仓口径，单基金代理），仅供参考、非投资建议。"
         />
       )}
 

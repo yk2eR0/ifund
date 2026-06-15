@@ -26,6 +26,7 @@ export interface PositionFund {
   drawdown_ytd: number | null
   position_stock: number | null
   scale: number | null
+  cluster_rank: number  // 簇内综合分排名（1=TOP1）；>1 表示为降相关性选了次优基金
 }
 
 export interface NavCurvePoint {
@@ -102,6 +103,8 @@ export interface PositionMeta {
   n_clusters: number
   base_weight: number
   nav_missing: string[]
+  cap: number            // 单一行业穿透占比上限（均衡强度）
+  funds_swapped: number  // 为降相关性替代了 TOP1 的簇数
 }
 
 export interface ClusterMetaBrief {

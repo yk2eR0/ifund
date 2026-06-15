@@ -91,8 +91,13 @@ export default function PositionRow({
         <div style={{ fontWeight: 600, marginTop: 6 }}>
           {fund.name}
           <span style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 400, marginLeft: 8 }}>
-            {fund.code} · 簇内综合分第一 · 共 {item.fund_count} 只
+            {fund.code} · 簇内综合分第 {fund.cluster_rank} · 共 {item.fund_count} 只
           </span>
+          {fund.cluster_rank > 1 && (
+            <Tooltip title="为降低与其它簇的底层相关性，组合优化选了该簇内综合分次优、但行业更分散的基金替代 TOP1">
+              <Tag color="purple" style={{ marginLeft: 8 }}>降相关替代</Tag>
+            </Tooltip>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 24, marginTop: 6, alignItems: 'flex-start' }}>
