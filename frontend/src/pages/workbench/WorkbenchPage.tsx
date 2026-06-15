@@ -61,11 +61,14 @@ export default function WorkbenchPage() {
           {
             key: 'cluster',
             label: '聚类分析',
+            // 强制挂载：否则非激活 Tab 懒加载，ref 为 null，预设变化时自动运行扑空
+            forceRender: true,
             children: <ClusterView ref={clusterRef} presetId={presetId} />,
           },
           {
             key: 'position',
             label: '仓位建议',
+            forceRender: true,
             children: <PositionView ref={positionRef} presetId={presetId} />,
           },
         ]}
