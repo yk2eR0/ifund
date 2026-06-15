@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from app import db as database
 
-CONCURRENCY = 8
+CONCURRENCY = 1  # akshare 使用 V8 引擎，不支持并发初始化
 
 
 def safe_float(value):
