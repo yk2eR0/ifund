@@ -4,6 +4,7 @@ import { FundOutlined } from '@ant-design/icons'
 import request from '../../api/request'
 import PositionRow from './PositionRow'
 import PortfolioCharts from './PortfolioCharts'
+import LookthroughCard from './LookthroughCard'
 import type { PositionResult } from './types'
 
 // ③ 簇级仓位建议视图：对共享预设镜像聚类后，按每簇 TOP1 基金景气度+乖离给出目标权重。
@@ -41,6 +42,7 @@ const PositionView = forwardRef<
   const items = result?.items
   const meta = result?.meta
   const portfolio = result?.portfolio
+  const lookthrough = result?.lookthrough
   const maxWeight = items && items.length ? Math.max(...items.map((i) => i.weight)) : 0
 
   return (
@@ -77,6 +79,10 @@ const PositionView = forwardRef<
 
       {!loading && portfolio && portfolio.curve.length > 0 && (
         <PortfolioCharts portfolio={portfolio} />
+      )}
+
+      {!loading && lookthrough && lookthrough.stocks.length > 0 && (
+        <LookthroughCard data={lookthrough} />
       )}
 
       {!loading && items && items.length > 0 && (

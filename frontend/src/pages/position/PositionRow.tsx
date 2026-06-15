@@ -1,10 +1,16 @@
 import { Tag, Tooltip } from 'antd'
+import MiniNavChart from './MiniNavChart'
 import ProsperityBars from './ProsperityBars'
 import type { PositionItem } from './types'
 
 const TAG_COLOR: Record<string, string> = { 加码: 'red', 标配: 'blue', 减码: 'default' }
 
-// 单簇仓位建议行：左=目标权重+标签，中=簇/代表基金，右=景气四因子+乖离+理由
+// 形如 "1.78" / "-25.3%"；空值显示 -
+function fmt(v: number | null | undefined, suffix = ''): string {
+  return v === null || v === undefined ? '-' : `${Number(v).toFixed(2)}${suffix}`
+}
+
+// 单簇仓位建议行：左=目标权重 | 中=簇/基金/指标/走势图 | 右=景气四因子（收缩）+乖离+理由
 export default function PositionRow({ item, maxWeight }: { item: PositionItem; maxWeight: number }) {
   const { fund, prosperity: pros, deviation: dev, recommendation: rec } = item
   const pct = (item.weight * 100).toFixed(1)
@@ -12,6 +18,12 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
   const rel = item.weight - item.base_weight
   const industries = item.top_industries.map((i) => i.label).join(' / ') || item.cluster_name
   const noNav = item.nav_points < 60
+
+  const metric = (label: string, value: string, color?: string) => (
+    <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+      {label} <b style={{ color: color ?? 'inherit', fontWeight: 600 }}>{value}</b>
+    </span>
+  )
 
   return (
     <div
@@ -24,7 +36,7 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
       }}
     >
       {/* 左：目标权重 */}
-      <div style={{ width: 150, flexShrink: 0 }}>
+      <div style={{ width: 140, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
           <span style={{ fontSize: 26, fontWeight: 700, lineHeight: 1 }}>{pct}%</span>
           <Tag color={TAG_COLOR[rec.tag] ?? 'blue'} style={{ marginInlineEnd: 0 }}>
@@ -47,30 +59,40 @@ export default function PositionRow({ item, maxWeight }: { item: PositionItem; m
         </div>
       </div>
 
-      {/* 中：簇 + 代表基金 */}
-      <div style={{ width: 240, flexShrink: 0 }}>
-        <Tag color="geekblue">簇 {item.cluster_id}</Tag>
-        <span style={{ fontWeight: 600 }}>{industries}</span>
-        <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 6 }}>
-          代表基金（簇内综合分第一 · 共 {item.fund_count} 只）
+      {/* 中：簇 + 代表基金 + 指标 + 迷你走势图 */}
+      <div style={{ flex: 1, minWidth: 320 }}>
+        <div>
+          <Tag color="geekblue">簇 {item.cluster_id}</Tag>
+          <span style={{ fontWeight: 600 }}>{industries}</span>
         </div>
-        <div style={{ fontWeight: 600, marginTop: 2 }}>{fund.name}</div>
-        <div style={{ fontSize: 12, color: '#8c8c8c' }}>
-          {fund.code} · 综合分 {fund.score.toFixed(3)} · Sharpe{' '}
-          {fund.sharpe_3y == null ? '-' : fund.sharpe_3y.toFixed(2)}
-          {fund.scale != null ? ` · ${fund.scale.toFixed(2)} 亿` : ''}
+        <div style={{ fontWeight: 600, marginTop: 6 }}>
+          {fund.name}
+          <span style={{ fontSize: 12, color: '#8c8c8c', fontWeight: 400, marginLeft: 8 }}>
+            {fund.code} · 簇内综合分第一 · 共 {item.fund_count} 只
+          </span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 14px', marginTop: 4 }}>
+          {metric('Sharpe3y', fmt(fund.sharpe_3y), fund.sharpe_3y && fund.sharpe_3y >= 1 ? '#f5222d' : undefined)}
+          {metric('Sharpe1y', fmt(fund.sharpe_1y))}
+          {metric('回撤3y', fmt(fund.max_drawdown_3y, '%'), '#fa8c16')}
+          {metric('今年', fmt(fund.return_ytd, '%'), (fund.return_ytd ?? 0) >= 0 ? '#f5222d' : '#52c41a')}
+          {metric('股票仓位', fmt(fund.position_stock, '%'))}
+          {fund.scale != null && metric('规模', `${fund.scale.toFixed(1)}亿`)}
+        </div>
+        <div style={{ marginTop: 6, maxWidth: 460 }}>
+          <MiniNavChart data={item.nav_curve} />
         </div>
       </div>
 
-      {/* 右：景气度 + 乖离 + 理由 */}
-      <div style={{ flex: 1, minWidth: 240 }}>
+      {/* 右：景气度（收缩为固定宽度）+ 乖离 + 理由 */}
+      <div style={{ width: 280, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <span style={{ fontSize: 12, color: '#8c8c8c' }}>景气度</span>
           <b style={{ fontSize: 16 }}>{pros.total.toFixed(0)}</b>
           <Tooltip title="当前净值相对 MA20/MA60 的乖离（0.6·d20+0.4·d60），择时参考">
             <span style={{ fontSize: 12, color: '#8c8c8c' }}>· 乖离 {dev.combined.toFixed(1)}%</span>
           </Tooltip>
-          {noNav && <Tag color="warning">净值不足·中性估计</Tag>}
+          {noNav && <Tag color="warning">净值不足</Tag>}
         </div>
         <ProsperityBars pros={pros} />
         <div style={{ fontSize: 12, marginTop: 6, color: 'rgba(140,140,140,0.95)' }}>{rec.reason}</div>

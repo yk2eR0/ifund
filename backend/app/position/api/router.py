@@ -8,8 +8,10 @@ from __future__ import annotations
 from flask import Blueprint, jsonify
 from flask_jwt_extended import jwt_required
 
+from app import db as database
 from app import preset_access
 from app.cluster.algo import pipeline as cluster_pipeline
+from app.fund_holdings.crud import holdings_crud
 from app.fund_nav.crud import nav_crud
 from app.position.algo import pipeline as position_pipeline
 
@@ -32,10 +34,14 @@ def run():
         return jsonify({"items": None, "reason": "有效基金不足（需 ≥3 只含股票持仓的基金）"})
 
     clusters = cluster_result["clusters"]
-    nav_by_code = {
-        c["funds"][0]["code"]: nav_crud.recent_series_dated(c["funds"][0]["code"], NAV_LOOKBACK)
-        for c in clusters if c.get("funds")
-    }
-    result = position_pipeline.run(clusters, nav_by_code)
+    top_codes = [c["funds"][0]["code"] for c in clusters if c.get("funds")]
+    nav_by_code = {code: nav_crud.recent_series_dated(code, NAV_LOOKBACK) for code in top_codes}
+    holdings_by_code = {code: holdings_crud.top_holdings(code, "stock") for code in top_codes}
+    detail_by_code = {}
+    for code in top_codes:
+        detail = database.select_one("fund_details", {"fund_code": f"eq.{code}"})
+        if detail:
+            detail_by_code[code] = detail
+    result = position_pipeline.run(clusters, nav_by_code, holdings_by_code, detail_by_code)
     result["cluster_meta"] = cluster_result["meta"]
     return jsonify(result)

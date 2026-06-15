@@ -77,12 +77,66 @@ def _portfolio_stats(curve: list[dict]) -> dict:
             "sharpe": round(sharpe, 2)}
 
 
-def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -> dict:
+def _rebase_curve(dated: list[tuple[str, float]]) -> list[dict]:
+    """把代表基金净值序列 rebase 到起点 1.0，供前端画迷你走势图（hover 看收益率）。"""
+    if not dated:
+        return []
+    base = dated[0][1]
+    if not base:
+        return []
+    return [{"date": d, "nav": round(v / base, 4)} for d, v in dated]
+
+
+def _lookthrough(valid: list[dict], weights_list: list[float],
+                 holdings_by_code: dict[str, list[dict]]) -> dict:
+    """把各簇代表基金的前十大股票按目标权重穿透累加，看底层实际持有哪些股票。
+
+    组合对某股票的暴露% = ∑(基金目标权重 × 该基金中此股占净值比例)。
+    重叠（被 ≥2 只基金持有）越多，说明底层越集中、代表基金相关性越高。
+    仅基于可见的前十大持仓，非完整持仓。
+    """
+    agg: dict[str, dict] = {}
+    covered = 0
+    for cluster, w in zip(valid, weights_list):
+        code = cluster["funds"][0]["code"]
+        holdings = holdings_by_code.get(code, [])
+        if not holdings or w <= 0:
+            continue
+        covered += 1
+        fund_name = cluster["funds"][0]["name"]
+        for h in holdings:
+            scode = (h.get("asset_code") or "").strip()
+            if not scode:
+                continue
+            ratio = h.get("hold_ratio") or 0.0
+            slot = agg.setdefault(scode, {
+                "code": scode, "name": h.get("asset_name") or scode,
+                "exposure": 0.0, "funds": [],
+            })
+            slot["exposure"] += w * ratio          # w 小数 × 占净值% → 组合中该股 %
+            slot["funds"].append({"name": fund_name, "ratio": round(ratio, 2)})
+
+    stocks = sorted(agg.values(), key=lambda s: s["exposure"], reverse=True)
+    for s in stocks:
+        s["exposure"] = round(s["exposure"], 2)
+        s["fund_count"] = len(s["funds"])
+    overlap = sum(1 for s in stocks if s["fund_count"] >= 2)
+    visible = round(sum(s["exposure"] for s in stocks), 2)
+    return {"funds_covered": covered, "total_stocks": len(stocks),
+            "overlap_stocks": overlap, "visible_position": visible, "stocks": stocks}
+
+
+def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
+        holdings_by_code: dict[str, list[dict]] | None = None,
+        detail_by_code: dict[str, dict] | None = None) -> dict:
     """clusters：cluster pipeline 的簇列表；nav_by_code：code→``(trade_date, 累计净值)`` 升序。
 
+    holdings_by_code：code→前十大股票持仓（穿透分析用）；detail_by_code：code→fund_details 行（补回撤/夏普）。
     每簇取综合分第一的基金（``funds[0]``）作为代表，算景气度+乖离+目标权重+推荐。
-    返回 ``{"items": [...], "meta": {...}}``，items 按目标权重降序。
+    返回 ``{"items": [...], "portfolio": {...}, "lookthrough": {...}, "meta": {...}}``，items 按目标权重降序。
     """
+    holdings_by_code = holdings_by_code or {}
+    detail_by_code = detail_by_code or {}
     valid = [c for c in clusters if c.get("funds")]
     dated_list = [nav_by_code.get(c["funds"][0]["code"], []) for c in valid]
     series_list = [[nav for _, nav in dated] for dated in dated_list]
@@ -95,6 +149,7 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -
     items, missing = [], []
     for i, cluster in enumerate(valid):
         fund = cluster["funds"][0]
+        detail = detail_by_code.get(fund["code"], {})
         points = len(series_list[i])
         if points < MIN_NAV_POINTS:
             missing.append(fund["code"])
@@ -106,8 +161,15 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -
             "fund": {
                 "code": fund["code"], "name": fund["name"], "score": fund["score"],
                 "sharpe_3y": fund["sharpe_3y"], "scale": fund["scale"],
+                "sharpe_1y": detail.get("sharpe_1y"),
+                "max_drawdown_3y": detail.get("max_drawdown_3y"),
+                "max_drawdown_1y": detail.get("max_drawdown_1y"),
+                "return_ytd": detail.get("return_ytd"),
+                "drawdown_ytd": detail.get("drawdown_ytd"),
+                "position_stock": detail.get("position_stock"),
             },
             "nav_points": points,
+            "nav_curve": _rebase_curve(dated_list[i]),
             "prosperity": pros[i],
             "deviation": devs[i],
             "base_weight": base,
@@ -120,7 +182,9 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]]) -
     # 按目标权重合成组合净值与回撤走势（rebase 到 1.0 后加权），并算年化/夏普
     curve, max_drawdown = _portfolio_curve(dated_list, target)
     stats = _portfolio_stats(curve)
+    lookthrough = _lookthrough(valid, target, holdings_by_code)
 
     return {"items": items,
             "portfolio": {"curve": curve, "max_drawdown": max_drawdown, **stats},
+            "lookthrough": lookthrough,
             "meta": {"n_clusters": len(valid), "base_weight": base, "nav_missing": missing}}
