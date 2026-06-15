@@ -23,7 +23,8 @@ function buildView(points: PortfolioPoint[]) {
     peak = Math.max(peak, nav)
     const dd = peak > 0 ? (nav - peak) / peak : 0
     maxDd = Math.min(maxDd, dd)
-    return { date: p.date, nav: +nav.toFixed(4), drawdown: +(dd * 100).toFixed(2) }
+    // ret：相对窗口起点的累计收益率（%）；underwater 回撤另算
+    return { date: p.date, ret: +((nav - 1) * 100).toFixed(2), drawdown: +(dd * 100).toFixed(2) }
   })
 
   const rets: number[] = []
@@ -139,26 +140,26 @@ export default function PortfolioCharts({ portfolio }: { portfolio: Portfolio })
         {span} · 按目标权重回测，夏普以 rf=0 计
       </div>
 
-      <div style={{ fontSize: 12, color: token.colorTextSecondary, margin: '4px 0' }}>净值走势</div>
+      <div style={{ fontSize: 12, color: token.colorTextSecondary, margin: '4px 0' }}>收益率走势</div>
       <ResponsiveContainer width="100%" height={220}>
         <AreaChart data={curve} margin={{ top: 8, right: 12, left: 0, bottom: 0 }} syncId="portfolio">
           <defs>
-            <linearGradient id="navFill" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="retFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={token.colorPrimary} stopOpacity={0.32} />
               <stop offset="100%" stopColor={token.colorPrimary} stopOpacity={0.02} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} />
           <XAxis dataKey="date" tickFormatter={fmtTick} interval={tickGap} tick={axisTick} minTickGap={16} />
-          <YAxis domain={['auto', 'auto']} tickFormatter={(v) => v.toFixed(2)} width={48} tick={axisTick} />
+          <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `${v}%`} width={48} tick={axisTick} />
           <Tooltip
             labelFormatter={(d) => `日期 ${d}`}
-            formatter={(v: number) => [v.toFixed(4), '组合净值']}
+            formatter={(v: number) => [`${v.toFixed(2)}%`, '累计收益率']}
             contentStyle={tooltipStyle}
             labelStyle={{ color: token.colorTextSecondary }}
             itemStyle={{ color: token.colorText }}
           />
-          <Area type="monotone" dataKey="nav" stroke={token.colorPrimary} strokeWidth={1.6} fill="url(#navFill)" isAnimationActive={false} />
+          <Area type="monotone" dataKey="ret" stroke={token.colorPrimary} strokeWidth={1.6} fill="url(#retFill)" isAnimationActive={false} />
         </AreaChart>
       </ResponsiveContainer>
 
