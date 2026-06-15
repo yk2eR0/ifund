@@ -12,9 +12,11 @@ import type { FundItem, QueryPreset } from '../fund/types'
 export default function MirrorView({
   presetId,
   presets,
+  onMirrorSaved,
 }: {
   presetId: number | null
   presets: QueryPreset[]
+  onMirrorSaved?: () => void   // 镜像更新成功后联动（重跑聚类/仓位）
 }) {
   const { latest, snapshot, loading, saving, refresh, saveMirror } = useScreenData(presetId, presets)
   const [detailCode, setDetailCode] = useState<string | null>(null)
@@ -61,7 +63,9 @@ export default function MirrorView({
         <Button
           type="primary"
           icon={<SaveOutlined />}
-          onClick={saveMirror}
+          onClick={async () => {
+            if (await saveMirror()) onMirrorSaved?.()
+          }}
           disabled={!latest.length}
           loading={saving}
         >

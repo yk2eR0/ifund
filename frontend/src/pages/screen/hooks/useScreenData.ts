@@ -59,9 +59,9 @@ export function useScreenData(presetId: number | null, presets: QueryPreset[]) {
     }
   }, [presetId, presets, runScreen, loadSnapshot])
 
-  // 把当前最新筛选结果存为该预设的镜像
-  const saveMirror = useCallback(async () => {
-    if (presetId == null) return
+  // 把当前最新筛选结果存为该预设的镜像；成功返回 true（供上层联动重跑聚类/仓位）
+  const saveMirror = useCallback(async (): Promise<boolean> => {
+    if (presetId == null) return false
     setSaving(true)
     try {
       // 镜像不存净值序列，减小体积
@@ -73,8 +73,10 @@ export function useScreenData(presetId: number | null, presets: QueryPreset[]) {
       await request.post(`/fund/presets/${presetId}/snapshot`, { items })
       await loadSnapshot(presetId)
       message.success('镜像已更新')
+      return true
     } catch {
       message.error('保存镜像失败')
+      return false
     } finally {
       setSaving(false)
     }

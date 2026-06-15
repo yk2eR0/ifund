@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card, Select, Space, Tabs } from 'antd'
 import request from '../../api/request'
 import type { QueryPreset } from '../fund/types'
@@ -22,14 +22,19 @@ export default function WorkbenchPage() {
       .catch(() => undefined)
   }, [])
 
-  // 预设变化时自动运行聚类和仓位分析
-  useEffect(() => {
+  // 重跑聚类 + 仓位分析（预设变化、或镜像更新后调用）
+  const rerun = useCallback(() => {
     if (!presetId) return
     setTimeout(() => {
       clusterRef.current?.run()
       positionRef.current?.run()
     }, 100)
   }, [presetId])
+
+  // 预设变化时自动运行聚类和仓位分析
+  useEffect(() => {
+    rerun()
+  }, [rerun])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -56,7 +61,7 @@ export default function WorkbenchPage() {
           {
             key: 'mirror',
             label: '镜像基金',
-            children: <MirrorView presetId={presetId} presets={presets} />,
+            children: <MirrorView presetId={presetId} presets={presets} onMirrorSaved={rerun} />,
           },
           {
             key: 'cluster',
