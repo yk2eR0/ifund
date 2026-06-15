@@ -103,8 +103,10 @@ export interface PositionMeta {
   n_clusters: number
   base_weight: number
   nav_missing: string[]
-  cap: number            // 单一行业穿透占比上限（均衡强度）
-  funds_swapped: number  // 为降相关性替代了 TOP1 的簇数
+  cap: number                       // 单一行业穿透占比上限（均衡强度）
+  funds_swapped: number             // 为降相关性替代了 TOP1 的簇数
+  nav_as_of: string | null          // 净值数据截止日（YYYY-MM-DD）
+  holdings_quarter: string | null   // 持仓数据季度（如 2025Q1）
 }
 
 export interface ClusterMetaBrief {

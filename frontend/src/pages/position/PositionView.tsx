@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from 'react'
-import { Alert, Button, Card, Empty, Segmented, Space, Spin, Tooltip, message } from 'antd'
-import { FundOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Empty, Segmented, Space, Spin, Tag, Tooltip, message } from 'antd'
+import { ClockCircleOutlined, FundOutlined } from '@ant-design/icons'
 import request from '../../api/request'
 import PositionRow from './PositionRow'
 import PortfolioCharts from './PortfolioCharts'
@@ -101,6 +101,14 @@ const PositionView = forwardRef<
             {meta.funds_swapped ? ` · ${meta.funds_swapped} 簇为降相关选了次优基金` : ''}
             {meta.nav_missing.length ? ` · ${meta.nav_missing.length} 只缺净值按中性估计` : ''}
           </span>
+        )}
+        {meta && (meta.nav_as_of || meta.holdings_quarter) && (
+          <Tooltip title="本建议基于库内已采集数据现场计算，非实时行情。净值随下次采集前移、持仓季度级更新；要反映最新市况请先跑数据采集再重新生成。">
+            <Tag icon={<ClockCircleOutlined />} color="default" style={{ marginInlineEnd: 0 }}>
+              数据截止：净值 {meta.nav_as_of ?? '—'}
+              {meta.holdings_quarter ? ` · 持仓 ${meta.holdings_quarter}` : ''}
+            </Tag>
+          </Tooltip>
         )}
       </Space>
 

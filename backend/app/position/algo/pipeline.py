@@ -251,8 +251,16 @@ def run(clusters: list[dict], nav_by_code: dict[str, list[tuple[str, float]]],
     lookthrough = _lookthrough(selected, target, holdings_by_code, ind_idx)
     swapped = sum(1 for r in choice if r != 0)
 
+    # 数据时效：净值截止日（选中基金净值序列最后一天的最大值）+ 持仓季度（最新）
+    nav_dates = [dated[-1][0] for dated in dated_list if dated]
+    nav_as_of = max(nav_dates) if nav_dates else None
+    quarters = [h["quarter"] for f in selected
+                for h in holdings_by_code.get(f["code"], []) if h.get("quarter")]
+    holdings_quarter = max(quarters) if quarters else None
+
     return {"items": items,
             "portfolio": {"curve": curve, "max_drawdown": max_drawdown, **stats},
             "lookthrough": lookthrough,
             "meta": {"n_clusters": len(valid), "base_weight": base,
-                     "nav_missing": missing, "cap": cap, "funds_swapped": swapped}}
+                     "nav_missing": missing, "cap": cap, "funds_swapped": swapped,
+                     "nav_as_of": nav_as_of, "holdings_quarter": holdings_quarter}}
