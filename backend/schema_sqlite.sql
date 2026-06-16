@@ -187,3 +187,15 @@ CREATE TABLE IF NOT EXISTS stock_industry (
 );
 CREATE INDEX IF NOT EXISTS ix_stock_industry_sw3 ON stock_industry (sw_l3);
 CREATE INDEX IF NOT EXISTS ix_stock_industry_market ON stock_industry (market);
+
+-- 用户实盘持仓（按 user_id 隔离，每只基金一行；用于实盘对账/再平衡）
+CREATE TABLE IF NOT EXISTS user_holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    fund_code TEXT NOT NULL,
+    fund_name TEXT DEFAULT '',
+    market_value REAL NOT NULL DEFAULT 0,   -- 当前市值（元）
+    updated_at TEXT DEFAULT (datetime('now')),
+    UNIQUE (user_id, fund_code)
+);
+CREATE INDEX IF NOT EXISTS ix_user_holdings_user ON user_holdings (user_id);

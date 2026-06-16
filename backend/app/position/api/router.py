@@ -34,18 +34,18 @@ def _resolve_cap() -> float:
     return min(CAP_MAX, max(CAP_MIN, cap))
 
 
-@bp.post("/run")
-@jwt_required()
-def run():
-    """对预设镜像聚类并算簇级仓位建议。body: ``{"preset_id": int, "cap"?: float}``。"""
-    items, error = preset_access.resolve_items("items")
-    if error:
-        payload, status = error
-        return jsonify(payload), status
+def compute_position(items: list[dict], cap: float):
+    """对一批镜像基金（含 metrics）聚类并算簇级仓位建议。
 
+    返回 ``(result, clusters)``：result 为 position_pipeline.run 的结果（已注入 ``cluster_meta``，
+    供 HTTP 直接返回）；clusters 为聚类簇列表（含每簇全部成员，供「实盘对账」做赛道归类）。
+    有效基金不足时返回 ``(None, None)``。
+
+    供 ``/position/run`` 与「实盘对账」共用，确保两处用同一套代表基金与目标权重。
+    """
     cluster_result = cluster_pipeline.run(items, preset_access.build_metrics(items))
     if cluster_result is None:
-        return jsonify({"items": None, "reason": "有效基金不足（需 ≥3 只含股票持仓的基金）"})
+        return None, None
 
     clusters = cluster_result["clusters"]
     # 每簇取综合分前 TOPK 候选（供组合优化交叉选基金），需覆盖它们全部的净值/持仓/明细
@@ -60,8 +60,23 @@ def run():
         if detail:
             detail_by_code[code] = detail
     result = position_pipeline.run(clusters, nav_by_code, holdings_by_code,
-                                   detail_by_code, cap=_resolve_cap())
+                                   detail_by_code, cap=cap)
     result["cluster_meta"] = cluster_result["meta"]
+    return result, clusters
+
+
+@bp.post("/run")
+@jwt_required()
+def run():
+    """对预设镜像聚类并算簇级仓位建议。body: ``{"preset_id": int, "cap"?: float}``。"""
+    items, error = preset_access.resolve_items("items")
+    if error:
+        payload, status = error
+        return jsonify(payload), status
+
+    result, _ = compute_position(items, _resolve_cap())
+    if result is None:
+        return jsonify({"items": None, "reason": "有效基金不足（需 ≥3 只含股票持仓的基金）"})
     return jsonify(result)
 
 

@@ -5,6 +5,7 @@ import type { QueryPreset } from '../fund/types'
 import MirrorView from '../screen/MirrorView'
 import ClusterView from '../cluster/ClusterView'
 import PositionView from '../position/PositionView'
+import ReconcileView from '../reconcile/ReconcileView'
 
 // 组合分析工作台：三类分析（镜像基金 / 聚类 / 仓位）共享同一个预设镜像，
 // 选择预设后自动运行聚类和仓位分析；用 Tab 切换不同视图。
@@ -75,6 +76,12 @@ export default function WorkbenchPage() {
             label: '仓位建议',
             forceRender: true,
             children: <PositionView ref={positionRef} presetId={presetId} />,
+          },
+          {
+            key: 'reconcile',
+            label: '实盘对账',
+            // 对账依赖用户输入（持仓/现金），不随预设自动跑；ref 仅备用，无需 forceRender
+            children: <ReconcileView presetId={presetId} />,
           },
         ]}
       />
