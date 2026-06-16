@@ -9,24 +9,32 @@ import type { UserHolding } from './types'
 const { TextArea } = Input
 
 // 持仓录入：表格行内改市值/删除 + 批量粘贴导入（每行「代码<分隔>金额」）。
-// 持仓持久化在后端 user_holdings 表，跨会话保留；改动后回调 onChanged 通知父组件重算可投。
-export default function HoldingsEditor({ onChanged }: { onChanged?: () => void }) {
+// 持仓按 portfolioId 隔离、持久化在后端 user_holdings 表，跨会话保留；改动后回调 onChanged。
+export default function HoldingsEditor({
+  portfolioId, onChanged,
+}: { portfolioId: number | null; onChanged?: () => void }) {
   const [items, setItems] = useState<UserHolding[]>([])
   const [loading, setLoading] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [importing, setImporting] = useState(false)
 
   const load = useCallback(async () => {
+    if (!portfolioId) {
+      setItems([])
+      return
+    }
     setLoading(true)
     try {
-      const { data } = await request.get<{ items: UserHolding[] }>('/reconcile/holdings')
+      const { data } = await request.get<{ items: UserHolding[] }>('/reconcile/holdings', {
+        params: { portfolio_id: portfolioId },
+      })
       setItems(data.items ?? [])
     } catch {
       message.error('加载持仓失败')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [portfolioId])
 
   useEffect(() => {
     load()
@@ -34,8 +42,10 @@ export default function HoldingsEditor({ onChanged }: { onChanged?: () => void }
 
   // 行内改市值：失焦即 upsert（保留原成本）
   const saveValue = async (code: string, name: string, mv: number, cost?: number | null) => {
+    if (!portfolioId) return
     try {
       await request.post('/reconcile/holdings', {
+        portfolio_id: portfolioId,
         fund_code: code, fund_name: name, market_value: mv, cost: cost ?? null,
       })
       onChanged?.()
@@ -46,8 +56,9 @@ export default function HoldingsEditor({ onChanged }: { onChanged?: () => void }
   }
 
   const removeHolding = async (code: string) => {
+    if (!portfolioId) return
     try {
-      await request.delete(`/reconcile/holdings/${code}`)
+      await request.delete(`/reconcile/holdings/${code}`, { params: { portfolio_id: portfolioId } })
       setItems((prev) => prev.filter((h) => h.fund_code !== code))
       onChanged?.()
     } catch {
@@ -84,9 +95,15 @@ export default function HoldingsEditor({ onChanged }: { onChanged?: () => void }
       message.warning('未解析到有效行（格式：名称或代码 市值 [持有收益]，每行一只）')
       return
     }
+    if (!portfolioId) {
+      message.warning('请先选择一个实盘')
+      return
+    }
     setImporting(true)
     try {
-      const { data } = await request.post<{ count: number }>('/reconcile/holdings/bulk', { rows })
+      const { data } = await request.post<{ count: number }>('/reconcile/holdings/bulk', {
+        portfolio_id: portfolioId, rows,
+      })
       message.success(`已导入 ${data.count} 只（全量替换）`)
       setPasteText('')
       await load()

@@ -1,96 +1,94 @@
 import { Button, Card, Table, Tag, Typography, message } from 'antd'
-import { CopyOutlined, ArrowRightOutlined } from '@ant-design/icons'
+import { CopyOutlined } from '@ant-design/icons'
 import type { ReconTransfer } from './types'
 
 const yuan = (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
 
-const FROM_META: Record<ReconTransfer['from_type'], { label: string; color: string }> = {
-  trim: { label: '超配减仓', color: 'gold' },
-  outside: { label: '赛道外', color: 'purple' },
-  add_cash: { label: '追加现金', color: 'volcano' },
+const BUY = '#fa541c'   // 建仓/加仓/转入：橙
+const SRC = '#722ed1'   // 资金来源基金：紫
+const CASH = '#d4380d'  // 追加现金：火山红
+
+const fundLabel = (name: string, code: string) => `${name}（${code}）`
+
+// 一笔操作的纯文本句子（用于复制）。
+function sentence(t: ReconTransfer): string {
+  const act = t.to_action === 'open' ? '建仓' : '加仓'
+  const to = fundLabel(t.to_name, t.to_code)
+  if (t.from_type === 'add_cash') {
+    return `${to} ${act} ${yuan(t.amount)} 元（现金）`
+  }
+  // 赛道内超配减仓 / 赛道外卖出 → 转仓到目标基金
+  return `${fundLabel(t.from_name, t.from_code)} 转仓 ${yuan(t.amount)} 元 至 ${to}（${act}）`
 }
 
-// 换仓配对清单：每行一笔「资金来源 → 买入目标」资金流。
+// 操作指南：每行一句调仓者习惯的「A 转仓 X元 至 B / C 建仓 X元」。
 export default function TransfersTable({ transfers }: { transfers: ReconTransfer[] }) {
   const copyAll = () => {
-    const text = transfers
-      .map((t) => {
-        const src = t.from_type === 'add_cash' ? '追加现金' : `${t.from_name}（${t.from_code}）`
-        const verb = t.from_type === 'add_cash' ? '投' : '卖'
-        return `${verb}\t${src}\t→ 买\t${t.to_name}（${t.to_code}）\t${yuan(t.amount)} 元`
-      })
-      .join('\n')
+    const text = transfers.map(sentence).join('\n')
     if (!text) {
-      message.info('没有换仓动作')
+      message.info('没有调仓动作')
       return
     }
     navigator.clipboard.writeText(text).then(
-      () => message.success('已复制换仓清单'),
+      () => message.success('已复制操作指南'),
       () => message.error('复制失败'),
+    )
+  }
+
+  // 富文本渲染：来源紫 / 现金红 → 金额橙 → 目标橙；末尾标建仓/加仓。
+  const render = (t: ReconTransfer) => {
+    const act = t.to_action === 'open' ? '建仓' : '加仓'
+    const to = (
+      <b style={{ color: BUY }}>{fundLabel(t.to_name, t.to_code)}</b>
+    )
+    if (t.from_type === 'add_cash') {
+      return (
+        <span style={{ lineHeight: 1.6 }}>
+          <Tag color="volcano">现金</Tag>
+          {to} <b style={{ color: BUY }}>{act}</b>{' '}
+          <b style={{ color: CASH }}>{yuan(t.amount)} 元</b>
+          <span style={{ color: '#999' }}>（追加现金）</span>
+        </span>
+      )
+    }
+    const fromTag = t.from_type === 'outside'
+      ? <Tag color="purple">赛道外</Tag>
+      : <Tag color="gold">超配减仓</Tag>
+    return (
+      <span style={{ lineHeight: 1.6 }}>
+        {fromTag}
+        <b style={{ color: SRC }}>{fundLabel(t.from_name, t.from_code)}</b>{' '}
+        转仓 <b style={{ color: BUY }}>{yuan(t.amount)} 元</b> 至 {to}{' '}
+        <Tag color={t.to_action === 'open' ? 'volcano' : 'orange'} style={{ marginLeft: 4 }}>
+          {act}
+        </Tag>
+      </span>
     )
   }
 
   return (
     <Card
       size="small"
-      title={`换仓清单（${transfers.length} 笔：资金来源 → 买入目标）`}
+      title={`操作指南（${transfers.length} 笔调仓动作）`}
       extra={
         <Button size="small" icon={<CopyOutlined />} onClick={copyAll}>
-          复制换仓清单
+          复制操作指南
         </Button>
       }
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -4 }}>
-        资金来源优先级（尽量不用现金）：赛道内超配减仓 → 赛道外卖出（小额优先）→ 追加现金兜底。同一来源/目标可拆成多笔。
+        按调仓顺序执行：「来源基金 转仓 金额 至 目标基金」表示把来源基金赎回同等金额、申购到目标基金；
+        「目标基金 建仓/加仓 金额（现金）」表示用追加现金买入。资金来源优先级（尽量不用现金）：
+        赛道内超配减仓 → 赛道外卖出 → 追加现金兜底。
       </Typography.Paragraph>
       <Table<ReconTransfer>
         size="small"
+        showHeader={false}
         rowKey={(t, i) => `${t.from_code}-${t.to_code}-${i}`}
         dataSource={transfers}
         pagination={false}
         columns={[
-          {
-            title: '资金来源',
-            render: (_, t) => (
-              <div style={{ lineHeight: 1.4 }}>
-                <Tag color={FROM_META[t.from_type].color}>{FROM_META[t.from_type].label}</Tag>
-                {t.from_type === 'add_cash' ? (
-                  <span>追加现金</span>
-                ) : (
-                  <span>
-                    {t.from_name}{' '}
-                    <span style={{ fontFamily: 'monospace', color: '#999' }}>{t.from_code}</span>
-                  </span>
-                )}
-              </div>
-            ),
-          },
-          {
-            title: '金额',
-            dataIndex: 'amount',
-            width: 120,
-            align: 'right',
-            render: (v: number) => <b style={{ color: '#fa541c' }}>{yuan(v)} 元</b>,
-          },
-          {
-            title: '',
-            width: 36,
-            align: 'center',
-            render: () => <ArrowRightOutlined style={{ color: '#bbb' }} />,
-          },
-          {
-            title: '买入（目标）',
-            render: (_, t) => (
-              <div style={{ lineHeight: 1.4 }}>
-                <Tag color={t.to_action === 'open' ? 'volcano' : 'orange'}>
-                  {t.to_action === 'open' ? '建仓' : '加仓'}
-                </Tag>
-                {t.to_name}{' '}
-                <span style={{ fontFamily: 'monospace', color: '#999' }}>{t.to_code}</span>
-                <div style={{ fontSize: 12, color: '#999' }}>{t.to_cluster}</div>
-              </div>
-            ),
-          },
+          { title: '操作', render: (_, t) => render(t) },
         ]}
       />
     </Card>

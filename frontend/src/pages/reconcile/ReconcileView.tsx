@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Empty, Segmented, Space, Spin, Tag, Tooltip, message } from 'antd'
 import { ClockCircleOutlined, ReconciliationOutlined } from '@ant-design/icons'
 import request from '../../api/request'
@@ -7,12 +7,11 @@ import ReconcileTable from './ReconcileTable'
 import TransfersTable from './TransfersTable'
 import type { ReconResult } from './types'
 
-// 操作指南：把②仓位建议的目标比例与你的「实盘持仓」板块关联，按赛道对齐推导操作。
+// 操作指南：把所选实盘关联的②仓位建议目标比例落到实盘持仓上，按赛道对齐推导操作。
 // 两个正交开关覆盖四类意图；现金由系统反推（"加满还差多少"），无需预填。
-const ReconcileView = forwardRef<
-  { run: () => Promise<void> },
-  { presetId: number | null }
->(function ReconcileView({ presetId }, ref) {
+export default function ReconcileView({
+  portfolioId, hasPreset,
+}: { portfolioId: number | null; hasPreset: boolean }) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ReconResult | null>(null)
   // 缓冲带：偏离在盘子的此比例内则保持不动（抗短期噪音、保调仓连贯）。默认标准 3%。
@@ -24,20 +23,25 @@ const ReconcileView = forwardRef<
   // 开关二：赛道内超配是否可减（true=削峰填谷 / false=不减只往上加）。默认可减（最省）。
   const [trimOverflow, setTrimOverflow] = useState(true)
 
+  // 切换实盘后清空旧结果
   useEffect(() => {
     setResult(null)
-  }, [presetId])
+  }, [portfolioId])
 
   const run = useCallback(async () => {
-    if (!presetId) {
-      message.warning('请先在上方选择一个预设')
+    if (!portfolioId) {
+      message.warning('请先选择一个实盘')
+      return
+    }
+    if (!hasPreset) {
+      message.warning('请先为该实盘关联一个仓位建议（预设）')
       return
     }
     setLoading(true)
     setResult(null)
     try {
       const { data } = await request.post<ReconResult>('/reconcile/run', {
-        preset_id: presetId,
+        portfolio_id: portfolioId,
         band,
         cap,
         sell_outside: sellOutside,
@@ -45,13 +49,11 @@ const ReconcileView = forwardRef<
       })
       setResult(data)
     } catch {
-      message.error('对账失败')
+      message.error('生成操作指南失败')
     } finally {
       setLoading(false)
     }
-  }, [presetId, band, cap, sellOutside, trimOverflow])
-
-  useImperativeHandle(ref, () => ({ run }), [run])
+  }, [portfolioId, hasPreset, band, cap, sellOutside, trimOverflow])
 
   const rows = result?.rows
   const summary = result?.summary
@@ -59,12 +61,6 @@ const ReconcileView = forwardRef<
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Alert
-        type="info"
-        showIcon
-        message="操作指南：把②仓位建议的目标比例落到你的真实持仓上。按「赛道（聚类簇）」对齐，不强制你换成系统选的代表基金——只看每个赛道总仓位够不够。持仓请在左侧「实盘持仓」板块录入。用下面两个开关选择调仓方式，现金由系统反推「加满还差多少」，无需预填。仅供参考、非投资建议。"
-      />
-
       <Card size="small" title="调仓方式">
         <Space wrap size="large">
           <Tooltip title="保留不动：赛道外基金不卖（最小干预）。可卖补仓：把赛道外基金卖出，优先用于补低配赛道。">
@@ -164,9 +160,9 @@ const ReconcileView = forwardRef<
       )}
       {!loading && rows && rows.length > 0 && <ReconcileTable rows={rows} />}
 
-      {!loading && !result && <Empty description="在左侧「实盘持仓」录入持仓后，选好调仓方式点「生成操作指南」" />}
+      {!loading && !result && (
+        <Empty description="录入持仓、关联仓位建议后，选好调仓方式点「生成操作指南」" />
+      )}
     </div>
   )
-})
-
-export default ReconcileView
+}

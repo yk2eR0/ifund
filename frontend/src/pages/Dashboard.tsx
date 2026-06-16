@@ -59,7 +59,7 @@ export default function Dashboard() {
             items={[
               { key: 'fund', icon: <FundOutlined />, label: '基金管理' },
               { key: 'workbench', icon: <DeploymentUnitOutlined />, label: '组合分析' },
-              { key: 'holdings', icon: <WalletOutlined />, label: '实盘持仓' },
+              { key: 'holdings', icon: <WalletOutlined />, label: '实盘' },
               { key: 'trade_calendar', icon: <CalendarOutlined />, label: '交易日历' },
               { key: 'industry', icon: <ApartmentOutlined />, label: '行业映射' },
               { key: 'tokens', icon: <KeyOutlined />, label: '访问令牌' },

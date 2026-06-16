@@ -1,5 +1,13 @@
 // 实盘对账页的数据结构（对应后端 /api/reconcile/*）
 
+// 实盘账户：一个用户可有多个实盘（自己的 + 代管他人的），各自关联一套仓位建议（预设）
+export interface Portfolio {
+  id: number
+  name: string
+  preset_id: number | null   // 关联的仓位建议（预设）id；null=未关联
+  created_at?: string
+}
+
 // 用户实盘持仓（持久化在 user_holdings 表）
 export interface UserHolding {
   id?: number

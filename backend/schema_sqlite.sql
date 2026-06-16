@@ -188,15 +188,26 @@ CREATE TABLE IF NOT EXISTS stock_industry (
 CREATE INDEX IF NOT EXISTS ix_stock_industry_sw3 ON stock_industry (sw_l3);
 CREATE INDEX IF NOT EXISTS ix_stock_industry_market ON stock_industry (market);
 
--- 用户实盘持仓（按 user_id 隔离，每只基金一行；用于实盘对账/再平衡）
-CREATE TABLE IF NOT EXISTS user_holdings (
+-- 实盘账户：一个用户可有多个实盘（自己的 + 代管他人的），各自关联一套仓位建议（预设）
+CREATE TABLE IF NOT EXISTS portfolios (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    preset_id INTEGER,                      -- 关联的仓位建议（query_presets.id）；NULL=未关联
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS ix_portfolios_user ON portfolios (user_id);
+
+-- 用户实盘持仓（按 portfolio_id 隔离，每只基金一行；用于实盘对账/再平衡）
+CREATE TABLE IF NOT EXISTS user_holdings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    portfolio_id INTEGER NOT NULL,          -- 所属实盘
+    user_id INTEGER NOT NULL,               -- 冗余，便于隔离/查询
     fund_code TEXT NOT NULL,
     fund_name TEXT DEFAULT '',
     market_value REAL NOT NULL DEFAULT 0,   -- 当前市值（元）
     cost REAL,                              -- 持仓成本（元）；NULL=未提供。盈亏=市值−成本，仅展示不参与调仓决策
     updated_at TEXT DEFAULT (datetime('now')),
-    UNIQUE (user_id, fund_code)
+    UNIQUE (portfolio_id, fund_code)
 );
-CREATE INDEX IF NOT EXISTS ix_user_holdings_user ON user_holdings (user_id);
+CREATE INDEX IF NOT EXISTS ix_user_holdings_portfolio ON user_holdings (portfolio_id);

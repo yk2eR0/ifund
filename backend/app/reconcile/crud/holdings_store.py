@@ -1,7 +1,9 @@
-"""用户实盘持仓（``user_holdings`` 表）读写：按 user_id 隔离，每只基金一行。
+"""用户实盘持仓（``user_holdings`` 表）读写：按 portfolio_id 隔离，每只基金一行。
 
-录入是重活、跨会话保留，故持久化；现金 / 缓冲带 / cap 是即时计算参数走请求体不落库
-（持久化会陈旧误导）。``cost`` 为持仓成本（NULL=未提供），盈亏=市值−成本仅展示不参与决策。
+一个用户可有多个实盘（自己的 + 代管他人的），持仓挂在 ``portfolio_id`` 下；``user_id``
+冗余保留便于隔离查询。录入是重活、跨会话保留，故持久化；现金 / 缓冲带 / cap 是即时计算
+参数走请求体不落库（持久化会陈旧误导）。``cost`` 为持仓成本（NULL=未提供），盈亏=市值−成本
+仅展示不参与决策。
 
 导入支持「按名称」：用户 App 里只看得到基金名（且全是 C 类），故按名称反查代码——
 先精确匹配 funds.name，再去份额后缀匹配，匹配不到则用名称本身占位（后续靠名称归类兜底）。
@@ -20,10 +22,10 @@ def _now() -> str:
     return datetime.datetime.now().isoformat()
 
 
-def list_holdings(uid: int) -> list[dict]:
-    """该用户全部持仓，按市值降序。"""
+def list_holdings(pid: int) -> list[dict]:
+    """该实盘全部持仓，按市值降序。"""
     return database.select(TABLE, {
-        "user_id": f"eq.{uid}", "order": "market_value.desc",
+        "portfolio_id": f"eq.{pid}", "order": "market_value.desc",
     })
 
 
@@ -52,23 +54,25 @@ def resolve_by_name(name: str) -> tuple[str, str]:
     return name, name   # 反查不到：用名称占位，分类时靠名称匹配兜底
 
 
-def upsert_holding(uid: int, code: str, name: str, mv: float,
+def upsert_holding(pid: int, uid: int, code: str, name: str, mv: float,
                    cost: float | None = None) -> dict:
     """upsert 单只持仓；name 为空则从 funds 表补。返回该行。"""
     code = (code or "").strip()
     name = (name or "").strip() or _fund_name(code)
     existing = database.select_one(TABLE, {
-        "user_id": f"eq.{uid}", "fund_code": f"eq.{code}",
+        "portfolio_id": f"eq.{pid}", "fund_code": f"eq.{code}",
     })
     fields = {"fund_name": name, "market_value": mv, "cost": cost, "updated_at": _now()}
     if existing:
-        database.update(TABLE, {"user_id": uid, "fund_code": code}, fields)
+        database.update(TABLE, {"portfolio_id": pid, "fund_code": code}, fields)
         return {**existing, **fields}
-    return database.insert(TABLE, {"user_id": uid, "fund_code": code, **fields})
+    return database.insert(TABLE, {
+        "portfolio_id": pid, "user_id": uid, "fund_code": code, **fields,
+    })
 
 
-def bulk_replace(uid: int, rows: list[dict]) -> int:
-    """全量替换该用户持仓：先删后批量插入。
+def bulk_replace(pid: int, uid: int, rows: list[dict]) -> int:
+    """全量替换该实盘持仓：先删后批量插入。
 
     rows 每项 ``{fund_code?, fund_name?, market_value, cost?}``；只给名称时反查代码。
     同一 code 取最后一条（去重）。返回写入行数。
@@ -93,12 +97,12 @@ def bulk_replace(uid: int, rows: list[dict]) -> int:
         cleaned[code] = {"fund_code": code, "market_value": mv,
                          "fund_name": name, "cost": cost}
 
-    database.delete(TABLE, {"user_id": uid})
+    database.delete(TABLE, {"portfolio_id": pid})
     if not cleaned:
         return 0
     now = _now()
     payload = [{
-        "user_id": uid, "fund_code": c,
+        "portfolio_id": pid, "user_id": uid, "fund_code": c,
         "fund_name": v["fund_name"] or _fund_name(c),
         "market_value": v["market_value"], "cost": v["cost"], "updated_at": now,
     } for c, v in cleaned.items()]
@@ -106,11 +110,11 @@ def bulk_replace(uid: int, rows: list[dict]) -> int:
     return len(payload)
 
 
-def delete_holding(uid: int, code: str) -> None:
-    """删除该用户的一只持仓。"""
-    database.delete(TABLE, {"user_id": uid, "fund_code": (code or "").strip()})
+def delete_holding(pid: int, code: str) -> None:
+    """删除该实盘的一只持仓。"""
+    database.delete(TABLE, {"portfolio_id": pid, "fund_code": (code or "").strip()})
 
 
-def clear_holdings(uid: int) -> None:
-    """清空该用户全部持仓。"""
-    database.delete(TABLE, {"user_id": uid})
+def clear_holdings(pid: int) -> None:
+    """清空该实盘全部持仓。"""
+    database.delete(TABLE, {"portfolio_id": pid})
