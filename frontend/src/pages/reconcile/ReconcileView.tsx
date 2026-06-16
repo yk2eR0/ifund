@@ -1,28 +1,28 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react'
-import { Alert, Button, Card, Empty, InputNumber, Segmented, Space, Spin, Tag, Tooltip, message } from 'antd'
+import { Alert, Button, Card, Empty, Segmented, Space, Spin, Tag, Tooltip, message } from 'antd'
 import { ClockCircleOutlined, ReconciliationOutlined } from '@ant-design/icons'
 import request from '../../api/request'
-import HoldingsEditor from './HoldingsEditor'
 import SummaryCard from './SummaryCard'
 import ReconcileTable from './ReconcileTable'
 import TransfersTable from './TransfersTable'
 import type { ReconResult } from './types'
 
-// 实盘对账视图：导入持仓 + 可投现金，复用③仓位的目标权重，按赛道对齐算加/减/建/清金额。
-// presetId 由工作台下传；与仓位建议共用同一预设镜像、同一 cap（均衡强度）。
+// 操作指南：把②仓位建议的目标比例与你的「实盘持仓」板块关联，按赛道对齐推导操作。
+// 两个正交开关覆盖四类意图；现金由系统反推（"加满还差多少"），无需预填。
 const ReconcileView = forwardRef<
   { run: () => Promise<void> },
   { presetId: number | null }
 >(function ReconcileView({ presetId }, ref) {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ReconResult | null>(null)
-  const [cash, setCash] = useState(0)
-  // 缓冲带：偏离在总资产的此比例内则保持不动（抗短期噪音、保调仓连贯）。默认标准 3%。
+  // 缓冲带：偏离在盘子的此比例内则保持不动（抗短期噪音、保调仓连贯）。默认标准 3%。
   const [band, setBand] = useState(0.03)
   // 均衡强度 cap：与仓位建议一致，默认「紧」0.14。
   const [cap, setCap] = useState(0.14)
-  // 模式：子仓位（默认，赛道外保留不动）/ 智能换仓（赛道外按需卖出补低配）/ 整盘（赛道外全清）。
-  const [mode, setMode] = useState<'sleeve' | 'swap' | 'whole'>('sleeve')
+  // 开关一：赛道外是否可卖去补缺口（false=保留不动）。默认保留。
+  const [sellOutside, setSellOutside] = useState(false)
+  // 开关二：赛道内超配是否可减（true=削峰填谷 / false=不减只往上加）。默认可减（最省）。
+  const [trimOverflow, setTrimOverflow] = useState(true)
 
   useEffect(() => {
     setResult(null)
@@ -38,10 +38,10 @@ const ReconcileView = forwardRef<
     try {
       const { data } = await request.post<ReconResult>('/reconcile/run', {
         preset_id: presetId,
-        cash,
         band,
         cap,
-        mode,
+        sell_outside: sellOutside,
+        trim_overflow: trimOverflow,
       })
       setResult(data)
     } catch {
@@ -49,9 +49,8 @@ const ReconcileView = forwardRef<
     } finally {
       setLoading(false)
     }
-  }, [presetId, cash, band, cap, mode])
+  }, [presetId, band, cap, sellOutside, trimOverflow])
 
-  // 工作台预设变化时不自动对账（持仓/现金是用户输入，需手动触发）；仅暴露给父组件备用。
   useImperativeHandle(ref, () => ({ run }), [run])
 
   const rows = result?.rows
@@ -63,41 +62,40 @@ const ReconcileView = forwardRef<
       <Alert
         type="info"
         showIcon
-        message="实盘对账：把③仓位建议的目标权重落到你的真实持仓上。按「赛道（聚类簇）」对齐，不强制你换成系统选的代表基金——只看每个赛道总仓位够不够。默认「子仓位」模式：把所选预设当成账户里的一个子仓位，只调能对上赛道的基金，赛道外的保留不动（不建议清仓）。先在下方导入持仓（可含持有收益，盈亏仅展示不参与决策）、填可投现金，再点「开始对账」。仅供参考、非投资建议。"
+        message="操作指南：把②仓位建议的目标比例落到你的真实持仓上。按「赛道（聚类簇）」对齐，不强制你换成系统选的代表基金——只看每个赛道总仓位够不够。持仓请在左侧「实盘持仓」板块录入。用下面两个开关选择调仓方式，现金由系统反推「加满还差多少」，无需预填。仅供参考、非投资建议。"
       />
 
-      <HoldingsEditor onChanged={() => setResult(null)} />
-
-      <Card size="small" title="对账参数">
+      <Card size="small" title="调仓方式">
         <Space wrap size="large">
-          <span>
-            可投现金：
-            <InputNumber
-              value={cash}
-              min={0}
-              precision={2}
-              style={{ width: 160, marginLeft: 8 }}
-              formatter={(x) => `${x}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              parser={(x) => Number((x || '').replace(/,/g, ''))}
-              addonAfter="元"
-            />
-          </span>
-          <Tooltip title="子仓位：只调能对上赛道的基金，赛道外保留不动、目标按「匹配市值+现金」分配。智能换仓：在子仓位目标下，按「现金→赛道外→超配减仓」优先级卖出补低配，生成「卖A→买B」换仓清单，赛道外够补即止不强制全清。整盘：整个账户向目标迁移，赛道外全部清仓。">
+          <Tooltip title="保留不动：赛道外基金不卖（最小干预）。可卖补仓：把赛道外基金卖出，优先用于补低配赛道。">
             <span>
-              模式：
+              赛道外基金：
               <Segmented
                 style={{ marginLeft: 8 }}
-                value={mode}
-                onChange={(v) => setMode(v as 'sleeve' | 'swap' | 'whole')}
+                value={sellOutside ? 'sell' : 'keep'}
+                onChange={(v) => setSellOutside(v === 'sell')}
                 options={[
-                  { label: '子仓位', value: 'sleeve' },
-                  { label: '智能换仓', value: 'swap' },
-                  { label: '整盘', value: 'whole' },
+                  { label: '保留不动', value: 'keep' },
+                  { label: '可卖补仓', value: 'sell' },
                 ]}
               />
             </span>
           </Tooltip>
-          <Tooltip title="缓冲带：目标与实际的偏离在「基准资产 × 此比例」以内就保持不动，抑制短期噪音、保持调仓连贯。宽松=更少折腾，灵敏=更贴目标。">
+          <Tooltip title="可减（削峰填谷）：卖出超配赛道补低配赛道，盘子=赛道内现额，理论零追加。不减（只往上加）：超配赛道不碰，只买入，盘子放大到最超配赛道达标——严重超配时追加现金需求会很高。">
+            <span>
+              赛道内超配：
+              <Segmented
+                style={{ marginLeft: 8 }}
+                value={trimOverflow ? 'cut' : 'nocut'}
+                onChange={(v) => setTrimOverflow(v === 'cut')}
+                options={[
+                  { label: '可减（削峰填谷）', value: 'cut' },
+                  { label: '不减（只往上加）', value: 'nocut' },
+                ]}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip title="缓冲带：目标与实际的偏离在「盘子 × 此比例」以内就保持不动，抑制短期噪音、保持调仓连贯。宽松=更少折腾，灵敏=更贴目标。">
             <span>
               缓冲带：
               <Segmented
@@ -112,7 +110,7 @@ const ReconcileView = forwardRef<
               />
             </span>
           </Tooltip>
-          <Tooltip title="均衡强度（单一行业穿透占比上限），与仓位建议一致。紧=更分散。改这里会用新 cap 重算目标权重。">
+          <Tooltip title="均衡强度（单一行业穿透占比上限），与仓位建议一致。紧=更分散。改这里会用新 cap 重算目标比例。">
             <span>
               均衡强度：
               <Segmented
@@ -128,12 +126,12 @@ const ReconcileView = forwardRef<
             </span>
           </Tooltip>
           <Button type="primary" icon={<ReconciliationOutlined />} loading={loading} onClick={run}>
-            开始对账
+            生成操作指南
           </Button>
         </Space>
         {meta && (meta.nav_as_of || meta.holdings_quarter) && (
           <div style={{ marginTop: 10 }}>
-            <Tooltip title="目标权重基于库内已采集数据现场计算，非实时行情。要反映最新市况请先跑数据采集。">
+            <Tooltip title="目标比例基于库内已采集数据现场计算，非实时行情。要反映最新市况请先跑数据采集。">
               <Tag icon={<ClockCircleOutlined />} color="default">
                 数据截止：净值 {meta.nav_as_of ?? '—'}
                 {meta.holdings_quarter ? ` · 持仓 ${meta.holdings_quarter}` : ''}
@@ -152,12 +150,12 @@ const ReconcileView = forwardRef<
 
       {loading && (
         <div style={{ textAlign: 'center', padding: 48 }}>
-          <Spin tip="对账计算中…" />
+          <Spin tip="计算操作指南中…" />
         </div>
       )}
 
       {!loading && result && rows === null && (
-        <Alert type="info" showIcon message={result.reason ?? '无法对账'} />
+        <Alert type="info" showIcon message={result.reason ?? '无法生成操作指南'} />
       )}
 
       {!loading && summary && <SummaryCard summary={summary} />}
@@ -166,7 +164,7 @@ const ReconcileView = forwardRef<
       )}
       {!loading && rows && rows.length > 0 && <ReconcileTable rows={rows} />}
 
-      {!loading && !result && <Empty description="导入持仓并填写可投现金后，点「开始对账」" />}
+      {!loading && !result && <Empty description="在左侧「实盘持仓」录入持仓后，选好调仓方式点「生成操作指南」" />}
     </div>
   )
 })

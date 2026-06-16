@@ -5,18 +5,19 @@ import type { ReconTransfer } from './types'
 const yuan = (v: number) => v.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
 
 const FROM_META: Record<ReconTransfer['from_type'], { label: string; color: string }> = {
-  cash: { label: '现金', color: 'blue' },
-  outside: { label: '赛道外', color: 'purple' },
   trim: { label: '超配减仓', color: 'gold' },
+  outside: { label: '赛道外', color: 'purple' },
+  add_cash: { label: '追加现金', color: 'volcano' },
 }
 
-// 换仓配对清单（swap 模式）：每行一笔「卖出来源 → 买入目标」资金流，按金额降序。
+// 换仓配对清单：每行一笔「资金来源 → 买入目标」资金流。
 export default function TransfersTable({ transfers }: { transfers: ReconTransfer[] }) {
   const copyAll = () => {
     const text = transfers
       .map((t) => {
-        const src = t.from_type === 'cash' ? '可投现金' : `${t.from_name}（${t.from_code}）`
-        return `卖\t${src}\t→ 买\t${t.to_name}（${t.to_code}）\t${yuan(t.amount)} 元`
+        const src = t.from_type === 'add_cash' ? '追加现金' : `${t.from_name}（${t.from_code}）`
+        const verb = t.from_type === 'add_cash' ? '投' : '卖'
+        return `${verb}\t${src}\t→ 买\t${t.to_name}（${t.to_code}）\t${yuan(t.amount)} 元`
       })
       .join('\n')
     if (!text) {
@@ -32,7 +33,7 @@ export default function TransfersTable({ transfers }: { transfers: ReconTransfer
   return (
     <Card
       size="small"
-      title={`换仓清单（${transfers.length} 笔：卖出来源 → 买入目标）`}
+      title={`换仓清单（${transfers.length} 笔：资金来源 → 买入目标）`}
       extra={
         <Button size="small" icon={<CopyOutlined />} onClick={copyAll}>
           复制换仓清单
@@ -40,7 +41,7 @@ export default function TransfersTable({ transfers }: { transfers: ReconTransfer
       }
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -4 }}>
-        资金来源优先级：现金 → 赛道外卖出（小额优先）→ 赛道内超配减仓。同一来源/目标可拆成多笔。
+        资金来源优先级（尽量不用现金）：赛道内超配减仓 → 赛道外卖出（小额优先）→ 追加现金兜底。同一来源/目标可拆成多笔。
       </Typography.Paragraph>
       <Table<ReconTransfer>
         size="small"
@@ -49,12 +50,12 @@ export default function TransfersTable({ transfers }: { transfers: ReconTransfer
         pagination={false}
         columns={[
           {
-            title: '卖出（来源）',
+            title: '资金来源',
             render: (_, t) => (
               <div style={{ lineHeight: 1.4 }}>
                 <Tag color={FROM_META[t.from_type].color}>{FROM_META[t.from_type].label}</Tag>
-                {t.from_type === 'cash' ? (
-                  <span>可投现金</span>
+                {t.from_type === 'add_cash' ? (
+                  <span>追加现金</span>
                 ) : (
                   <span>
                     {t.from_name}{' '}

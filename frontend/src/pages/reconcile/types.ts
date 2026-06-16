@@ -58,9 +58,9 @@ export interface ReconCounts {
   keep: number
 }
 
-// 一笔换仓配对（swap 模式）：卖出某来源 → 买入某目标基金
+// 一笔换仓配对：卖出某来源 → 买入某目标基金
 export interface ReconTransfer {
-  from_type: 'cash' | 'outside' | 'trim'   // 资金来源：现金 / 赛道外卖出 / 超配减仓
+  from_type: 'trim' | 'outside' | 'add_cash'  // 资金来源：超配减仓 / 赛道外卖出 / 追加现金
   from_code: string
   from_name: string
   from_cluster: string
@@ -72,21 +72,20 @@ export interface ReconTransfer {
 }
 
 export interface ReconSummary {
-  mode: 'sleeve' | 'whole' | 'swap'
-  base_asset: number      // 目标分配基准（子仓位=匹配市值+现金）
-  total_asset: number     // 总资产 = 全部持仓市值 + 可投现金
+  sell_outside: boolean   // 开关：赛道外是否可卖
+  trim_overflow: boolean  // 开关：赛道内超配是否可减
+  base_asset: number      // 目标分配盘子
+  total_asset: number     // 加满后总资产 = 当前持仓 + 追加现金
   held_total: number      // 当前持仓总市值（含赛道外）
   matched_total: number   // 对上赛道的持仓市值
-  cash: number            // 可投现金
   outside_value: number   // 赛道外持仓市值
   buy_total: number       // 建议买入合计
-  sell_total: number      // 建议卖出合计
-  leftover_cash: number   // 配平后剩余现金
-  from_cash?: number      // swap：来自现金的资金
-  from_outside?: number   // swap：来自赛道外卖出的资金
-  from_trim?: number      // swap：来自超配减仓的资金
-  band: number            // 缓冲带（占基准比例）
-  scaled: boolean         // 是否因资金不足等比缩减了买入
+  sell_total: number      // 建议卖出合计（超配减 + 赛道外卖）
+  from_trim: number       // 来自超配减仓的资金
+  from_outside: number    // 来自赛道外卖出的资金
+  cash_needed: number     // 系统反推「加满还差多少现金」
+  band: number            // 缓冲带（占盘子比例）
+  scaled: boolean         // 是否有赛道因可动用资金不足而未完全到位
   has_cost: boolean       // 是否有成本数据
   pnl_total: number | null    // 有成本部分的未实现盈亏（仅展示）
   return_pct: number | null   // 有成本部分的收益率%（仅展示）

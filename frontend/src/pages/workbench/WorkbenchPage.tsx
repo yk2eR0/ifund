@@ -79,8 +79,8 @@ export default function WorkbenchPage() {
           },
           {
             key: 'reconcile',
-            label: '实盘对账',
-            // 对账依赖用户输入（持仓/现金），不随预设自动跑；ref 仅备用，无需 forceRender
+            label: '操作指南',
+            // 依赖「实盘持仓」板块录入的持仓，不随预设自动跑；ref 仅备用，无需 forceRender
             children: <ReconcileView presetId={presetId} />,
           },
         ]}
